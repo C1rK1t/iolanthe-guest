@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Princess Iolanthe Onboard</title>
+  <link rel="icon" type="image/svg+xml" href="/assets/icons/onboard/favicon.svg?v=1" />
+  <link rel="icon" type="image/png" sizes="96x96" href="/assets/icons/onboard/favicon-96x96.png?v=1" />
+  <link rel="shortcut icon" href="/assets/icons/onboard/favicon.ico?v=1" />
+  <link rel="apple-touch-icon" sizes="180x180" href="/assets/icons/onboard/apple-touch-icon.png?v=1" />
+  <link rel="apple-touch-icon" href="/assets/icons/onboard/apple-touch-icon.png?v=1" />
+  <link rel="manifest" href="/manifest.json" />
+  <meta name="theme-color" content="#06345f" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="Iolanthe Onboard" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="anonymous" />
+  <link rel="stylesheet" href="/guest.css">
+</head>
+<body>
+  <header>
+    <div class="header-inner brand-header">
+      <div class="brand-center">
+        <div class="brand-kicker">Princess Iolanthe</div>
+        <h1 id="siteTitle">Onboard Guest Portal</h1>
+        <div class="subtitle" id="siteSubtitle">Guest Information System</div>
+      </div>
+
+      <div class="brand-side brand-right">
+          <div class="header-position">
+            <div class="header-position-label">Current Position</div>
+            <div class="header-position-primary" id="headerPositionPrimary">Awaiting live NMEA position</div>
+            <div class="header-position-secondary" id="headerPositionSecondary">Decimal --, --</div>
+          <div class="header-position-meta" id="headerPositionMeta"></div>
+          </div>
+      </div>
+
+    </div>
+
+    <div class="header-inner">
+      <nav class="tabs" id="tabs"></nav>
+    </div>
+  </header>
+  <main id="content"></main>
+  <aside class="install-prompt" id="installPrompt" aria-live="polite" hidden>
+    <div class="install-prompt__copy">
+      <p class="install-prompt__title">Add Iolanthe Onboard</p>
+      <p class="install-prompt__text">Add Iolanthe Onboard to your Home Screen for quick access during your stay.</p>
+      <p class="install-prompt__hint" id="installPromptHint"></p>
+    </div>
+    <div class="install-prompt__actions">
+      <button class="install-prompt__button" id="installPromptButton" type="button" hidden>Install</button>
+      <button class="install-prompt__button secondary" id="installPromptDismiss" type="button">Dismiss</button>
+    </div>
+  </aside>
+  <footer class="site-footer" id="siteFooter">
+    <div>Zenith Solutions Limited</div>
+    <a href="https://www.zenithsuperyachts.com" target="_blank" rel="noopener noreferrer">www.zenithsuperyachts.com</a>
+    <div class="site-footer__version" id="siteFooterVersion" hidden></div>
+  </footer>
+  <div class="idle-dashboard" id="idleDashboard" aria-hidden="true">
+    <div class="idle-dashboard__inner">
+      <section class="idle-panel idle-dashboard__header" aria-label="Idle dashboard header">
+        <div class="idle-dashboard__title" id="idleDashboardTitle">Princess Iolanthe</div>
+        <div class="idle-dashboard__clock" id="idleDashboardClock"></div>
+        <div class="idle-dashboard__position-primary" id="idleDashboardPositionPrimary">Awaiting vessel position</div>
+      </section>
+
+      <section class="idle-dashboard__map-shell" aria-label="Idle vessel map">
+        <div class="idle-dashboard__map" id="idleDashboardMap"></div>
+        <div class="idle-dashboard__map-placeholder" id="idleDashboardMapPlaceholder">
+          <div>
+            <strong>Preparing idle map</strong>
+            <div class="muted">The passive display will center on the vessel as soon as a usable position is available.</div>
+          </div>
+        </div>
+        <div class="map-availability-notice" id="idleDashboardMapUnavailableNotice" hidden></div>
+        <div class="idle-dashboard__map-meta">
+          <div class="idle-dashboard__map-label" id="idleDashboardMapLabel">Idle dashboard</div>
+          <div class="idle-dashboard__map-title" id="idleDashboardMapTitle">Awaiting vessel position</div>
+          <div class="idle-dashboard__map-copy" id="idleDashboardMapCopy"></div>
+        </div>
+      </section>
+
+      <aside class="idle-dashboard__sidebar" aria-label="Idle dashboard summary">
+        <section class="idle-panel" id="idleDashboardTelemetrySection">
+          <div class="idle-dashboard__section-head">
+            <div class="idle-dashboard__section-meta" id="idleDashboardTelemetryMeta"></div>
+          </div>
+          <div class="idle-dashboard__metric-grid" id="idleDashboardTelemetryGrid"></div>
+          <div class="idle-dashboard__footer-note" id="idleDashboardTelemetryStatus"></div>
+        </section>
+
+        <section class="idle-panel idle-itinerary-card" id="idleDashboardItinerarySection">
+          <div class="idle-dashboard__section-head">
+            <div class="idle-dashboard__section-meta" id="idleDashboardItineraryMeta">Itinerary</div>
+          </div>
+          <div class="idle-itinerary-content" id="idleDashboardItineraryBody"></div>
+        </section>
+      </aside>
+
+      <section class="idle-panel idle-dashboard__weather" id="idleDashboardWeatherSection">
+        <div class="idle-dashboard__section-head">
+          <div class="idle-dashboard__section-meta" id="idleDashboardWeatherMeta">Weather</div>
+        </div>
+        <div id="idleDashboardWeatherBody"></div>
+      </section>
+    </div>
+    <div class="idle-obs-feed" id="idleObsFeed" aria-hidden="true">
+      <div class="idle-obs-feed__body" id="idleObsFeedBody"></div>
+    </div>
+    <div class="idle-transition" id="idleTransition" aria-hidden="true">
+      <div class="idle-transition__art" aria-hidden="true"></div>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin="anonymous"></script>
+  <script src="./vendor/hls.min.js"></script>
+  <script src="/guest.js" defer></script>
+</body>
+</html>
