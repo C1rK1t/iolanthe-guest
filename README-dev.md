@@ -17,7 +17,7 @@ The guest app has no server of its own — it is served by `iolanthe-server`.
 
 ```powershell
 # In the iolanthe-server repo:
-$env:DATA_DIR="$PWD\data-local"; $env:GUEST_STATIC_DIR="$PWD\..\iolanthe-guest"; node server.js
+$env:DATA_DIR="$PWD\data-local"; $env:GUEST_STATIC_DIR="$PWD\..\..\portal\iolanthe-guest"; node server.js
 ```
 
 Then open `http://localhost:8000`.
