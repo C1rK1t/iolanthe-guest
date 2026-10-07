@@ -2542,20 +2542,6 @@
       return button;
     }
 
-    function renderItineraryStopTitle(stop, stopIndex, visibleStopCount) {
-      const title = stop.location || stop.label || `Stop ${stopIndex + 1}`;
-
-      return el("div", { class: "itinerary-stop-title" }, [
-        el("div", { class: "itinerary-stop-title-main" }, [
-          visibleStopCount > 1
-            ? el("span", { class: "itinerary-stop-index" }, [`Stop ${stopIndex + 1}`])
-            : null,
-          el("strong", {}, [title])
-        ]),
-        renderItineraryImageButton(stop)
-      ]);
-    }
-
     function ensureItineraryImageViewer() {
       let viewer = document.getElementById("itineraryImageViewer");
       if (viewer) {
@@ -2705,6 +2691,7 @@
     function getItineraryMapPoints() {
       const itineraryDays = getItineraryDays();
       const points = [];
+      const pushedStopIds = new Set();
 
       itineraryDays.forEach(dayEntry => {
         dayEntry.stops.forEach((stop, stopIndex) => {
@@ -2713,15 +2700,20 @@
           }
 
           const stopKey = `${dayEntry.id}-${stop.id || stopIndex + 1}`;
-          points.push({
-            id: stopKey,
-            latitude: stop.latitude,
-            longitude: stop.longitude,
-            day: dayEntry.day,
-            location: stop.name,
-            label: stop.name,
-            plan: ""
-          });
+          // One pin per stop (its first day); activity-site pins below are emitted for every day they fall on.
+          const stopPinId = stop.id || `stop-${stopIndex + 1}`;
+          if (!pushedStopIds.has(stopPinId)) {
+            pushedStopIds.add(stopPinId);
+            points.push({
+              id: stopKey,
+              latitude: stop.latitude,
+              longitude: stop.longitude,
+              day: dayEntry.day,
+              location: stop.name,
+              label: stop.name,
+              plan: ""
+            });
+          }
 
           stop.activities.forEach((activity, activityIndex) => {
             const site = activity.site;
@@ -6296,7 +6288,7 @@
         return;
       }
 
-      const points = getItineraryMapPoints();
+      const points = getItineraryMapPoints().filter(point => !point.isSite);
       const signature = getItineraryMapSignature(points);
 
       if (!points.length) {
