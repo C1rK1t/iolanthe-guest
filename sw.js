@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = "iolanthe-onboard-static-v3";
+const STATIC_CACHE_NAME = "iolanthe-onboard-static-v4";
 const LEAFLET_ASSET_CACHE_NAME = "iolanthe-onboard-leaflet-v1";
 
 const STATIC_ASSETS = [
@@ -6,6 +6,7 @@ const STATIC_ASSETS = [
   "/index.html",
   "/guest.css",
   "/guest.js",
+  "/itinerary-days.js",
   "/manifest.json",
   "/manifest.webmanifest",
   "/vendor/hls.min.js",
