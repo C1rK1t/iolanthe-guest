@@ -110,5 +110,45 @@
     return out;
   }
 
-  return { charterDayCount, deriveGuestDays, stopEntries, isStop, parseDateOnly };
+  // Pre-rework itinerary.json (plans/days) read directly, for ONE release after the server change. Alternatives are
+  // ignored. Remove when the server release is confirmed live (plan 5 Task 8).
+  function v1ToGuestDays(v1Input, dayCount, siteLibrary) {
+    const v1 = toObj(v1Input);
+    const sites = siteIndex(siteLibrary);
+    const startMs = parseDateOnly(v1.start_date);
+    const planDays = toObj(toObj(v1.plans).primary).days;
+    const raw = Array.isArray(planDays) && planDays.length ? planDays : (Array.isArray(v1.days) ? v1.days : []);
+    const byNumber = new Map();
+    raw.forEach((d, i) => {
+      const day = toObj(d);
+      const n = [day.charter_day, day.order, day.day].map(Number).find((x) => Number.isInteger(x) && x > 0) || i + 1;
+      byNumber.set(n, day);
+    });
+    const out = [];
+    const count = dayCount || Math.max(0, ...byNumber.keys());
+    for (let n = 1; n <= count; n += 1) {
+      const day = byNumber.get(n);
+      const stops = [];
+      if (day) {
+        const site = text(day.site_id) ? sites.get(text(day.site_id)) || null : null;
+        const activities = [];
+        if (text(day.notes)) {
+          const lines = text(day.notes).split("\n");
+          activities.push({ id: `${day.id || n}-notes`, title: lines[0].trim(), notes: lines.slice(1).join("\n").trim(), time: "", siteId: "", site: null, images: [] });
+        }
+        (Array.isArray(day.stops) ? day.stops : []).forEach((s, k) => {
+          const st = toObj(s);
+          const stopSite = text(st.site_id) ? sites.get(text(st.site_id)) || null : null;
+          activities.push({ id: `${day.id || n}-stop-${k + 1}`, title: (stopSite && text(stopSite.title)) || text(st.title_override) || text(st.site_id) || `Stop ${k + 1}`, notes: text(st.notes || st.note), time: "", siteId: text(st.site_id), site: stopSite, images: siteImages(stopSite) });
+        });
+        if (site || activities.length) {
+          stops.push({ id: day.id || `day-${n}`, name: text(day.title_override) || (site && text(site.title)) || `Day ${n}`, arriveTime: "", departTime: "", nights: 0, latitude: site ? site.latitude : undefined, longitude: site ? site.longitude : undefined, activities });
+        }
+      }
+      out.push({ id: `day-${n}`, day: `Day ${n}`, dayNumber: n, date: startMs === null ? "" : dateKey(startMs, n), area: stops.map((s) => s.name).join(" · "), summary: "", passage: "", stops });
+    }
+    return out;
+  }
+
+  return { charterDayCount, deriveGuestDays, v1ToGuestDays, stopEntries, isStop, parseDateOnly };
 });

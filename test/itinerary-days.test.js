@@ -87,3 +87,19 @@ test("deriveGuestDays: a missing site falls back quietly", () => {
   assert.deepEqual(act.images, []);
   assert.equal(act.title, "Lighthouse walk");
 });
+
+test("v1ToGuestDays: Primary days become one stop block each with the day's stops as activities and notes as a free activity", () => {
+  const v1 = { start_date: "2026-03-01", end_date: "2026-03-03", summary: "Old", plans: { primary: { welcome_message: "Hi", days: [
+    { id: "day-001", day: 1, site_id: "capones-lh", title_override: "Capones", notes: "Board 0900\nBrief", stops: [{ site_id: "potipot-beach", notes: "Swim" }] },
+    { id: "day-002", day: 2, notes: "", stops: [] },
+    { id: "day-003", day: 3, site_id: "potipot-beach", notes: "", stops: [] }
+  ] }, alternative: { days: [{ id: "alt-day-001", day: 1, site_id: "potipot-beach" }] } } };
+  const out = days.v1ToGuestDays(v1, 3, sites);
+  assert.equal(out.length, 3);
+  assert.equal(out[0].stops[0].name, "Capones");
+  assert.deepEqual(out[0].stops[0].activities.map((a) => [a.title, a.notes, a.siteId]), [["Board 0900", "Brief", ""], ["Potipot beach", "Swim", "potipot-beach"]]);
+  assert.deepEqual(out[1].stops, []);
+  assert.equal(out[1].passage, "");
+  assert.equal(out[2].stops[0].name, "Potipot beach");
+  assert.equal(out[2].date, "2026-03-03");
+});
