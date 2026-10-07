@@ -8285,7 +8285,7 @@
       document.getElementById("content").innerHTML = `
         <div class="hero-card">
           <h2>Loading error</h2>
-          <p class="muted">${err.message}</p>
+          <p class="muted">${escapeHtml(err.message)}</p>
           <p class="footer-note">Make sure you are serving this site from a local web server rather than opening the file directly.</p>
         </div>
       `;
