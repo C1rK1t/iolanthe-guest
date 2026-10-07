@@ -3876,3 +3876,11 @@
         border-radius: 12px;
       }
     }
+
+    .itinerary-stop-block { padding-top: 10px; }
+    .itinerary-stop-block-head { display: flex; justify-content: space-between; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+    .itinerary-stop-times { font-size: 0.9em; }
+    .itinerary-activity-list { margin-top: 6px; }
+    .itinerary-activity-title { font-weight: 600; }
+    .itinerary-activity-time { margin-left: 8px; font-variant-numeric: tabular-nums; }
+    .itinerary-passage { font-style: italic; padding: 8px 0; }

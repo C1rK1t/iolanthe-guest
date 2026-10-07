@@ -7725,6 +7725,12 @@
         ]);
       }
 
+      function renderActivityImageButton(activity) {
+        // The derived day carries raw site image paths; the viewer wants normalised media entries (site.media preferred).
+        const images = normalizeItineraryImages(activity.site ? itineraryMediaEntriesForStopSite(activity.site) : activity.images);
+        return images.length ? renderItineraryImageButton({ images, location: activity.title }) : null;
+      }
+
       function renderSelectedDay(day) {
         if (!day) {
           return el("div", { class: "menu-note" }, ["Itinerary data will be added shortly."]);
@@ -7734,39 +7740,38 @@
           return el("div", { class: "guest-itinerary-day-empty" }, ["No itinerary has been added for this day."]);
         }
 
-        return makeList([day], selectedItineraryDay => {
-          const visibleStops = getGuestItineraryVisibleStops(selectedItineraryDay);
-          const isSimpleSingleStop = !selectedItineraryDay.hasExplicitStops && visibleStops.length === 1 && !selectedItineraryDay.area && !selectedItineraryDay.summary;
-          const stop = visibleStops[0] || null;
+        if (day.passage) {
+          return makeList([day], d => el("li", { class: "list-item" }, [
+            el("div", { class: "itinerary-day-header" }, [el("strong", {}, [d.day])]),
+            el("div", { class: "muted itinerary-passage" }, [d.passage])
+          ]));
+        }
 
-          if (isSimpleSingleStop && stop) {
-            return el("li", { class: "list-item" }, [
-              el("div", { class: "itinerary-stop-title" }, [
-                el("div", { class: "itinerary-stop-title-main" }, [
-                  el("strong", {}, [`${selectedItineraryDay.day}: ${stop.location || stop.label || ""}`])
-                ]),
-                renderItineraryImageButton(stop)
+        return makeList([day], d => el("li", { class: "list-item" }, [
+          el("div", { class: "itinerary-day-header" }, [el("strong", {}, [d.day])]),
+          el("ul", { class: "list itinerary-stop-list" }, getGuestItineraryVisibleStops(d).map(stop => {
+            const times = [stop.arriveTime ? `Arrive ${stop.arriveTime}` : "", stop.departTime ? `Depart ${stop.departTime}` : ""].filter(Boolean).join(" · ");
+            return el("li", { class: "list-item itinerary-stop-block" }, [
+              el("div", { class: "itinerary-stop-block-head" }, [
+                el("strong", {}, [stop.name]),
+                times ? el("span", { class: "muted itinerary-stop-times" }, [times]) : null
               ]),
-              stop.plan ? el("div", { class: "muted itinerary-stop-plan" }, [stop.plan]) : null
+              stop.activities.length
+                ? el("ul", { class: "list itinerary-activity-list" }, stop.activities.map(activity =>
+                  el("li", { class: "list-item itinerary-activity" }, [
+                    el("div", { class: "itinerary-stop-title" }, [
+                      el("div", { class: "itinerary-stop-title-main" }, [
+                        el("span", { class: "itinerary-activity-title" }, [activity.title]),
+                        activity.time ? el("span", { class: "muted itinerary-activity-time" }, [activity.time]) : null
+                      ]),
+                      renderActivityImageButton(activity)
+                    ]),
+                    activity.notes ? el("div", { class: "muted itinerary-stop-plan" }, [activity.notes]) : null
+                  ])))
+                : null
             ]);
-          }
-
-          return el("li", { class: "list-item" }, [
-            el("div", { class: "itinerary-day-header" }, [
-              el("strong", {}, [selectedItineraryDay.day]),
-              selectedItineraryDay.area ? el("div", { class: "itinerary-day-area" }, [selectedItineraryDay.area]) : null
-            ]),
-            selectedItineraryDay.summary ? el("div", { class: "muted itinerary-day-summary" }, [selectedItineraryDay.summary]) : null,
-            visibleStops.length
-              ? el("ul", { class: "list itinerary-stop-list" }, visibleStops.map((itineraryStop, stopIndex) =>
-                el("li", { class: "list-item" }, [
-                  renderItineraryStopTitle(itineraryStop, stopIndex, visibleStops.length),
-                  itineraryStop.plan ? el("div", { class: "muted itinerary-stop-plan" }, [itineraryStop.plan]) : null
-                ])
-              ))
-              : null
-          ]);
-        });
+          }))
+        ]));
       }
 
       return el("section", { class: "tab-panel", id: "panel-itinerary" }, [
