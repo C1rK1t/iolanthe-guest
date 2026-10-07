@@ -59,7 +59,6 @@
     const NMEA_API_URL = "/api/nmea";
     const TRACK_API_URL = "/api/track";
     const PLANNED_ROUTE_API_URL = "/api/planned-route";
-    const ROUTE_PLAN_IDS = Object.freeze(["primary", "alternative"]);
     const TRACK_POLL_INTERVAL_MS = 30 * 1000;
     const VERSION_API_URL = "/api/version";
     const INSTALL_PROMPT_DISMISSED_KEY = "iolanthe-onboard-install-dismissed-v1";
@@ -345,19 +344,7 @@
       lastPositionKey: "",
       tileRecovery: createMapTileRecoveryState("idle", "idleDashboardMapUnavailableNotice")
     };
-    let plannedRouteData = {
-      source: null,
-      routes: [],
-      route: {
-        primary: { source: null, routes: [] },
-        alternative: { source: null, routes: [] }
-      },
-      requestedPlan: "primary",
-      activePlan: "primary",
-      fallbackPlan: "",
-      routeCount: 0,
-      coordinateCount: 0
-    };
+    let plannedRouteData = { source: null, routes: [], routeCount: 0, coordinateCount: 0 };
     let deferredInstallPromptEvent = null;
 
     function isTabletOrLarger() {
@@ -2849,16 +2836,6 @@
       };
     }
 
-    function normalizeRoutePlanId(value) {
-      const planId = String(value || "").trim().toLowerCase();
-      return ROUTE_PLAN_IDS.includes(planId) ? planId : "primary";
-    }
-
-    function explicitRoutePlanId(value) {
-      const planId = String(value || "").trim().toLowerCase();
-      return ROUTE_PLAN_IDS.includes(planId) ? planId : "";
-    }
-
     function normalizeSinglePlannedRouteData(rawData) {
       const data = rawData && typeof rawData === "object" ? rawData : {};
       const routes = Array.isArray(data.routes)
@@ -2886,163 +2863,25 @@
       };
     }
 
-    function plannedRoutePlanHasData(routePlan) {
-      return !!(routePlan && Array.isArray(routePlan.routes) && routePlan.routes.some(route => Array.isArray(route.coordinates) && route.coordinates.length >= 2));
+    function plannedRouteHasData(route) {
+      return !!(route && Array.isArray(route.routes) && route.routes.some(r => Array.isArray(r.coordinates) && r.coordinates.length >= 2));
     }
 
-    function routePlanFromDisplayedDayId(value) {
-      const dayId = getItineraryTextValue(value).toLowerCase();
-      if (!dayId) {
-        return "";
-      }
-      if (dayId.startsWith("alt-day")) {
-        return "alternative";
-      }
-      if (dayId.startsWith("day")) {
-        return "primary";
-      }
-      return "";
-    }
-
-    function getDisplayedItineraryDayNumber(options = {}) {
-      const itinerary = options.itinerary && typeof options.itinerary === "object" ? options.itinerary : itineraryData;
-      const charter = options.charter && typeof options.charter === "object" ? options.charter : {};
-      const explicitDayNumber = Number(options.dayNumber);
-      if (Number.isFinite(explicitDayNumber) && explicitDayNumber > 0) {
-        return Math.round(explicitDayNumber);
-      }
-
-      const days = getItineraryDays(itinerary);
-      const validDayNumbers = days
-        .map(day => Number(day && day.dayNumber))
-        .filter(dayNumber => Number.isFinite(dayNumber) && dayNumber > 0);
-      if (!validDayNumbers.length) {
-        return null;
-      }
-
-      return calculateCurrentCharterDayState({
-        startDate: getItineraryTextValue(itinerary && itinerary.start_date, charter && charter.start_date),
-        endDate: getItineraryTextValue(itinerary && itinerary.end_date, charter && charter.end_date),
-        today: options.today,
-        dayNumbers: validDayNumbers
-      }).defaultDayNumber;
-    }
-
-    function getDisplayedItineraryPlan(options = {}) {
-      const selectedPlan = explicitRoutePlanId(options.selectedPlan);
-      if (selectedPlan) {
-        return selectedPlan;
-      }
-
-      const itinerary = options.itinerary && typeof options.itinerary === "object" ? options.itinerary : itineraryData;
-      const days = getItineraryDays(itinerary);
-      const displayedDayNumber = getDisplayedItineraryDayNumber(options);
-      const activePlanByDay = itinerary && itinerary.active_plan_by_day && typeof itinerary.active_plan_by_day === "object" && !Array.isArray(itinerary.active_plan_by_day)
-        ? itinerary.active_plan_by_day
-        : {};
-      const explicitPlan = explicitRoutePlanId(displayedDayNumber === null ? "" : activePlanByDay[String(displayedDayNumber)]);
-      if (explicitPlan) {
-        return explicitPlan;
-      }
-
-      const displayedDay = Number.isFinite(displayedDayNumber)
-        ? (days.find(day => Number(day && day.dayNumber) === displayedDayNumber) || null)
-        : null;
-      const inferredPlan = explicitRoutePlanId(routePlanFromDisplayedDayId(displayedDay && displayedDay.id));
-      if (inferredPlan) {
-        return inferredPlan;
-      }
-
-      const earliestMappedDayNumber = Object.keys(activePlanByDay)
-        .map(key => Number(key))
-        .filter(dayNumber => Number.isInteger(dayNumber) && dayNumber > 0)
-        .sort((left, right) => left - right)[0];
-      const earliestMappedPlan = explicitRoutePlanId(earliestMappedDayNumber ? activePlanByDay[String(earliestMappedDayNumber)] : "");
-      if (earliestMappedPlan) {
-        return earliestMappedPlan;
-      }
-
-      return "primary";
-    }
-
-    function itineraryWelcomeMessageForPlan(itinerary, planId) {
-      const source = itinerary && typeof itinerary === "object" ? itinerary : itineraryData;
-      const plans = source && source.plans && typeof source.plans === "object" && !Array.isArray(source.plans)
-        ? source.plans
-        : {};
-      const normalizedPlanId = explicitRoutePlanId(planId) || "primary";
-      const planData = plans[normalizedPlanId] && typeof plans[normalizedPlanId] === "object" && !Array.isArray(plans[normalizedPlanId])
-        ? plans[normalizedPlanId]
-        : {};
-      return getItineraryTextValue(
-        planData.welcome_message,
-        source && source.welcome_message,
-        source && source.summary
-      );
-    }
-
-    function getDisplayedItineraryWelcomeMessage(options = {}) {
-      const itinerary = options.itinerary && typeof options.itinerary === "object" ? options.itinerary : itineraryData;
-      const selectedPlan = explicitRoutePlanId(options.selectedPlan);
-      return itineraryWelcomeMessageForPlan(itinerary, selectedPlan || getDisplayedItineraryPlan(options));
-    }
-
-    function getActiveRouteForPlan(activePlan, routes) {
-      const plans = routes && typeof routes === "object" && !Array.isArray(routes) ? routes : {};
-      const primary = normalizeSinglePlannedRouteData(plans.primary);
-      const alternative = normalizeSinglePlannedRouteData(plans.alternative);
-      const requestedPlan = normalizeRoutePlanId(activePlan);
-      const requestedRoute = requestedPlan === "alternative" ? alternative : primary;
-      const fallbackPlan = requestedPlan === "alternative" && !plannedRoutePlanHasData(requestedRoute)
-        ? "primary"
-        : requestedPlan;
-      const activeRoute = fallbackPlan === "alternative" ? alternative : primary;
-      return {
-        source: activeRoute.source,
-        routes: activeRoute.routes,
-        route: {
-          primary,
-          alternative
-        },
-        requestedPlan,
-        activePlan: fallbackPlan,
-        fallbackPlan: fallbackPlan === requestedPlan ? "" : fallbackPlan
-      };
-    }
-
-    function getDisplayedPlannedRoute(options = {}) {
-      return getActiveRouteForPlan(getDisplayedItineraryPlan(options), plannedRouteData.route);
-    }
-
+    // /api/planned-route is derived from the itinerary's points (spec A §3.4). The pre-rework `route.primary`
+    // wrapper may still be present for one release; `routes` is authoritative.
     function normalizePlannedRouteData(rawData) {
       const data = rawData && typeof rawData === "object" ? rawData : {};
-      const legacyRoute = normalizeSinglePlannedRouteData(data);
-      const plans = data.route && typeof data.route === "object" && !Array.isArray(data.route)
-        ? data.route
-        : {};
-      const primaryPlan = normalizeSinglePlannedRouteData(plans.primary);
-      const alternativePlan = normalizeSinglePlannedRouteData(plans.alternative);
-      const primary = plannedRoutePlanHasData(primaryPlan) || primaryPlan.source ? primaryPlan : legacyRoute;
-      const activeRoute = getActiveRouteForPlan(getDisplayedItineraryPlan(), {
-        primary,
-        alternative: alternativePlan
-      });
-      const coordinateCount = activeRoute.routes.reduce((total, route) => total + route.coordinates.length, 0);
-
+      const normalized = normalizeSinglePlannedRouteData(data);
       return {
-        source: activeRoute.source,
-        routes: activeRoute.routes,
-        route: activeRoute.route,
-        requestedPlan: activeRoute.requestedPlan,
-        activePlan: activeRoute.activePlan,
-        fallbackPlan: activeRoute.fallbackPlan,
-        routeCount: activeRoute.routes.length,
-        coordinateCount
+        source: normalized.source,
+        routes: normalized.routes,
+        routeCount: normalized.routes.length,
+        coordinateCount: normalized.routes.reduce((total, route) => total + route.coordinates.length, 0)
       };
     }
 
     function hasPlannedRoute() {
-      return plannedRoutePlanHasData(getDisplayedPlannedRoute());
+      return plannedRouteHasData(plannedRouteData);
     }
 
     function syncNavigationPlannedRouteToggle() {
@@ -3078,8 +2917,8 @@
     }
 
     function createPlannedRouteLayer(map, interactive = true) {
-      const activeRoute = getDisplayedPlannedRoute();
-      if (!map || !window.L || !plannedRoutePlanHasData(activeRoute)) {
+      const activeRoute = plannedRouteData;
+      if (!map || !window.L || !plannedRouteHasData(activeRoute)) {
         return null;
       }
 
@@ -7677,7 +7516,7 @@
 
     function renderItineraryTab(data) {
       const itineraryInfo = data && typeof data === "object" ? data : {};
-      const welcomeMessage = getDisplayedItineraryWelcomeMessage({ itinerary: itineraryInfo });
+      const welcomeMessage = getItineraryTextValue(itineraryInfo.welcome_message, itineraryInfo.summary);
       const itineraryDays = getItineraryDays(itineraryInfo);
       const viewState = getGuestItineraryDateViewState(itineraryInfo, itineraryDays);
       const visibleItineraryDays = getGuestVisibleItineraryDays(itineraryDays, viewState);
