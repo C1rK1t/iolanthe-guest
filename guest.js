@@ -3054,13 +3054,9 @@
 
       const itineraryLayer = window.L.layerGroup();
       points.forEach(point => {
-        const marker = window.L.circleMarker([point.latitude, point.longitude], {
-          radius: 6,
-          weight: 2,
-          color: "#fff5d8",
-          fillColor: "#d4b06a",
-          fillOpacity: 0.95
-        });
+        const marker = window.L.circleMarker([point.latitude, point.longitude], point.isSite
+          ? { radius: 4, weight: 1.5, color: "#fff5d8", fillColor: "#8fb3c9", fillOpacity: 0.95 }
+          : { radius: 6, weight: 2, color: "#fff5d8", fillColor: "#d4b06a", fillOpacity: 0.95 });
 
         const popupLines = [
           point.day && point.location
@@ -3069,12 +3065,14 @@
           point.plan ? `<div>${escapeHtml(point.plan)}</div>` : ""
         ].filter(Boolean);
 
-        marker.bindTooltip(escapeHtml(point.label), {
-          permanent: true,
-          direction: "top",
-          offset: [0, -10],
-          className: "navigation-itinerary-tooltip"
-        });
+        if (!point.isSite) {
+          marker.bindTooltip(escapeHtml(point.label), {
+            permanent: true,
+            direction: "top",
+            offset: [0, -10],
+            className: "navigation-itinerary-tooltip"
+          });
+        }
         marker.bindPopup(popupLines.join(""));
         marker.addTo(itineraryLayer);
       });
