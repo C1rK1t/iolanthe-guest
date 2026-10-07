@@ -98,3 +98,7 @@ After any change:
 - Changes to `guest.css` and `guest.js` are self-contained — no build step.
 - When adding or renaming static files, update the `STATIC_ASSETS` list in
   `sw.js` and bump `STATIC_CACHE_NAME`.
+
+## Tests
+
+Tests: `node --test` runs `test/itinerary-days.test.js`. `itinerary-days.js` is a UMD module shared by the browser and the tests.
