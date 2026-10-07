@@ -1,4 +1,4 @@
-const STATIC_CACHE_NAME = "iolanthe-onboard-static-v2";
+const STATIC_CACHE_NAME = "iolanthe-onboard-static-v3";
 const LEAFLET_ASSET_CACHE_NAME = "iolanthe-onboard-leaflet-v1";
 
 const STATIC_ASSETS = [

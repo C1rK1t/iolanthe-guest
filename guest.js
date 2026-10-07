@@ -3139,6 +3139,15 @@
       button.title = routeToggleLabel;
     }
 
+    function escapeHtml(value) {
+      return String(value ?? "")
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
     function clearLayerGroup(map, layer) {
       if (map && layer) {
         map.removeLayer(layer);
@@ -3161,8 +3170,8 @@
 
         if (interactive) {
           const popupParts = [
-            route.name ? `<strong>${route.name}</strong>` : "<strong>Planned Route</strong>",
-            route.description ? `<div>${route.description}</div>` : "",
+            route.name ? `<strong>${escapeHtml(route.name)}</strong>` : "<strong>Planned Route</strong>",
+            route.description ? `<div>${escapeHtml(route.description)}</div>` : "",
             `<div>${route.coordinates.length} points</div>`
           ].filter(Boolean);
           line.bindPopup(popupParts.join(""));
@@ -3292,11 +3301,13 @@
         });
 
         const popupLines = [
-          point.day && point.location ? `<strong>${point.day}: ${point.location}</strong>` : `<strong>${point.label}</strong>`,
-          point.plan ? `<div>${point.plan}</div>` : ""
+          point.day && point.location
+            ? `<strong>${escapeHtml(point.day)}: ${escapeHtml(point.location)}</strong>`
+            : `<strong>${escapeHtml(point.label)}</strong>`,
+          point.plan ? `<div>${escapeHtml(point.plan)}</div>` : ""
         ].filter(Boolean);
 
-        marker.bindTooltip(point.label, {
+        marker.bindTooltip(escapeHtml(point.label), {
           permanent: true,
           direction: "top",
           offset: [0, -10],
@@ -6545,7 +6556,7 @@
           interactive: false
         });
 
-        marker.bindTooltip(point.label || point.location || point.day, {
+        marker.bindTooltip(escapeHtml(point.label || point.location || point.day), {
           permanent: true,
           direction: "top",
           offset: [0, -8],
