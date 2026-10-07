@@ -2700,115 +2700,19 @@
       );
     }
 
+    // Charter rework spec A §6: days are derived from the v2 itinerary. A v1 payload (no `version`) goes through the
+    // converter for one release.
     function getItineraryDays(source = itineraryData) {
       const data = source && typeof source === "object" ? source : {};
-      const days = Array.isArray(data.days)
-        ? data.days
-        : [];
-
-      return days.map((entry, dayIndex) => {
-        const rawDay = entry && typeof entry === "object" ? entry : {};
-        const daySite = getSiteById(rawDay.site_id);
-        const hasStops = Array.isArray(rawDay.stops) && rawDay.stops.length > 0;
-        const dayNumber = itineraryDayNumberValue(rawDay, dayIndex);
-        const dayLabel = formatCharterDayLabel(dayNumber, dayIndex);
-        const usedDayText = new Set();
-        const parentLocation = getItineraryTextValue(
-          rawDay.title_override,
-          rawDay.location,
-          daySite && daySite.title
-        );
-        const summary = getUnusedItineraryTextValue(usedDayText, rawDay.notes, rawDay.summary);
-
-        function resolveStop(stopEntry, stopIndex) {
-          const rawStop = stopEntry && typeof stopEntry === "object" ? stopEntry : {};
-          const stopSite = getSiteById(rawStop.site_id);
-          const associatedSite = stopSite || (hasStops ? null : daySite);
-          const includeSiteNotes = rawStop.include_site_notes !== false && rawStop.exclude_site_notes !== true;
-          const siteDescription = includeSiteNotes && associatedSite ? associatedSite.description : "";
-          const location = getItineraryTextValue(
-            rawStop.title_override,
-            rawStop.location,
-            rawStop.map_label,
-            stopSite && stopSite.title,
-            daySite && daySite.title,
-            parentLocation
-          );
-          const plan = hasStops
-            ? getUnusedItineraryTextValue(
-              usedDayText,
-              rawStop.notes,
-              rawStop.plan,
-              rawStop.timing,
-              siteDescription
-            )
-            : getUnusedItineraryTextValue(
-              usedDayText,
-              rawStop.timing,
-              rawStop.plan,
-              siteDescription
-            );
-          const latitude = parseCoordinateValue(
-            rawStop.latitude !== undefined
-              ? rawStop.latitude
-              : (stopSite && stopSite.latitude !== undefined
-                ? stopSite.latitude
-                : (daySite && daySite.latitude !== undefined ? daySite.latitude : undefined))
-          );
-          const longitude = parseCoordinateValue(
-            rawStop.longitude !== undefined
-              ? rawStop.longitude
-              : (stopSite && stopSite.longitude !== undefined
-                ? stopSite.longitude
-                : (daySite && daySite.longitude !== undefined ? daySite.longitude : undefined))
-          );
-          const label = getItineraryTextValue(
-            rawStop.map_label,
-            location,
-            stopSite && stopSite.title,
-            parentLocation
-          ) || `${dayLabel} Stop ${stopIndex + 1}`;
-
-          return {
-            id: rawStop.id || rawStop.site_id || `${rawDay.id || dayLabel}-stop-${stopIndex + 1}`,
-            siteId: getItineraryTextValue(rawStop.site_id),
-            location,
-            plan,
-            latitude,
-            longitude,
-            label,
-            timing: getItineraryTextValue(rawStop.timing),
-            notes: getItineraryTextValue(rawStop.notes),
-            images: normalizeItineraryImages(itineraryMediaEntriesForStopSite(associatedSite))
-          };
-        }
-
-        const rawStops = hasStops
-          ? rawDay.stops
-          : [{
-              id: rawDay.id,
-              site_id: rawDay.site_id,
-              location: rawDay.location,
-              map_label: rawDay.map_label,
-              plan: rawDay.plan,
-              timing: rawDay.timing,
-              latitude: rawDay.latitude,
-              longitude: rawDay.longitude
-            }];
-        const stops = rawStops.map(resolveStop);
-
-        return {
-          id: rawDay.id || `day-${dayNumber}`,
-          day: dayLabel,
-          dayNumber,
-          date: getItineraryTextValue(rawDay.date, rawDay.start_date),
-          area: parentLocation,
-          summary,
-          timing: getItineraryTextValue(rawDay.timing),
-          hasExplicitStops: hasStops,
-          stops
-        };
-      });
+      const mod = window.IolantheItineraryDays;
+      if (!mod) {
+        return [];
+      }
+      const dayCount = mod.charterDayCount(data);
+      if (data.version === 2) {
+        return mod.deriveGuestDays(data, dayCount, charterSitesData);
+      }
+      return mod.v1ToGuestDays(data, dayCount, charterSitesData);
     }
 
     function getItineraryMapPoints() {
@@ -2821,14 +2725,33 @@
             return;
           }
 
+          const stopKey = `${dayEntry.id}-${stop.id || stopIndex + 1}`;
           points.push({
-            id: `${dayEntry.id}-${stop.id || stopIndex + 1}`,
+            id: stopKey,
             latitude: stop.latitude,
             longitude: stop.longitude,
             day: dayEntry.day,
-            location: stop.location,
-            label: stop.label,
-            plan: stop.plan || dayEntry.summary || ""
+            location: stop.name,
+            label: stop.name,
+            plan: ""
+          });
+
+          stop.activities.forEach((activity, activityIndex) => {
+            const site = activity.site;
+            if (!site || !Number.isFinite(site.latitude) || !Number.isFinite(site.longitude)) {
+              return;
+            }
+
+            points.push({
+              id: `${stopKey}-${activity.id || activityIndex + 1}`,
+              latitude: site.latitude,
+              longitude: site.longitude,
+              day: dayEntry.day,
+              location: stop.name,
+              label: activity.title,
+              plan: activity.notes,
+              isSite: true
+            });
           });
         });
       });
@@ -4127,17 +4050,11 @@
     }
 
     function getGuestItineraryVisibleStops(day) {
-      return day && Array.isArray(day.stops)
-        ? day.stops.filter(stop => !!stop.plan || (Array.isArray(stop.images) && stop.images.length))
-        : [];
+      return day && Array.isArray(day.stops) ? day.stops : [];
     }
 
     function guestItineraryDayHasContent(day) {
-      if (!day) {
-        return false;
-      }
-
-      return !!(day.area || day.summary || day.timing || getGuestItineraryVisibleStops(day).length);
+      return !!(day && (day.passage || (day.stops && day.stops.length)));
     }
 
     function getGuestItineraryDateViewState(itineraryInfo, days) {
@@ -5861,6 +5778,7 @@
     function getIdleItineraryStops(source = itineraryData) {
       const days = getItineraryDays(source);
       const stops = [];
+      const firstActivityTitle = stop => (stop.activities[0] ? stop.activities[0].title : "");
 
       days.forEach(dayEntry => {
         dayEntry.stops.forEach((stop, stopIndex) => {
@@ -5869,12 +5787,10 @@
             dayId: dayEntry.id,
             day: dayEntry.day,
             area: dayEntry.area,
-            daySummary: dayEntry.summary,
-            location: stop.location,
-            label: stop.label,
-            plan: stop.plan,
-            timing: stop.timing,
-            notes: stop.notes,
+            daySummary: firstActivityTitle(stop),
+            location: stop.name,
+            label: stop.name,
+            plan: firstActivityTitle(stop),
             latitude: stop.latitude,
             longitude: stop.longitude
           });
@@ -5913,7 +5829,11 @@
           next: firstStopIndex >= 0 ? (stops[firstStopIndex + 1] || null) : null
         };
       }
-      const currentDayNumber = getDisplayedItineraryDayNumber({ itinerary: itineraryData });
+      const currentDayNumber = calculateCurrentCharterDayState({
+        startDate: itineraryData && itineraryData.start_date,
+        endDate: itineraryData && itineraryData.end_date,
+        dayNumbers: days.map(dayEntry => dayEntry.dayNumber)
+      }).defaultDayNumber;
       const activeDayIndex = (() => {
         const datedMatchIndex = days.findIndex(dayEntry => normalizeDateKey(dayEntry.date) === todayKey);
         if (datedMatchIndex >= 0) {
@@ -6369,6 +6289,20 @@
       );
     }
 
+    function describeIdleItineraryDay(day, emptyText) {
+      if (!day) {
+        return emptyText;
+      }
+
+      const stops = Array.isArray(day.stops) ? day.stops : [];
+      if (stops.length) {
+        const firstActivity = stops.reduce((found, stop) => found || (stop.activities && stop.activities[0]) || null, null);
+        return stops.map(stop => stop.name).join(" → ") + (firstActivity ? ` · ${firstActivity.title}` : "");
+      }
+
+      return day.passage ? "Underway" : emptyText;
+    }
+
     function syncIdleItinerarySection() {
       const section = document.getElementById("idleDashboardItinerarySection");
       const body = document.getElementById("idleDashboardItineraryBody");
@@ -6400,9 +6334,9 @@
 
       const today = summary.today || {};
       const tomorrow = summary.tomorrow || null;
-      const todayNotes = getItineraryTextValue(today.summary) || "No notes for today's itinerary.";
+      const todayNotes = describeIdleItineraryDay(today, "No itinerary for today.");
       const tomorrowNotes = tomorrow
-        ? (getItineraryTextValue(tomorrow.summary) || "No notes for tomorrow's itinerary.")
+        ? describeIdleItineraryDay(tomorrow, "No itinerary for tomorrow.")
         : "No itinerary scheduled for tomorrow.";
       const items = [
         renderIdleSummaryTitleItem(
