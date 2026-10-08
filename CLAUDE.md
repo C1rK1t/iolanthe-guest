@@ -45,6 +45,12 @@ The guest app has no server of its own — it is served by iolanthe-server.
 - Keep all API calls as relative URLs.
 - Never cache /api/* routes in the service worker.
 - Bump STATIC_CACHE_NAME in sw.js whenever static assets change.
+- Local CSS/JS are loaded with `?v=<tag>` in `index.html`; change the tag in `index.html` **and** the matching
+  `STATIC_ASSETS` entries in `sw.js` on every release (the cache is keyed by the full URL).
+- Preview mode (charter rework spec B): `?preview=YYYY-MM-DD&charter=<id>` (parsed by `preview-mode.js`) replaces the
+  browser clock in `calculateCurrentCharterDayState` / `getCurrentDateKey`, adds the params to `/api/charter`,
+  `/api/planned-route` and `/api/track`, shows a red banner, and switches off the SW registration, the install prompt
+  and idle mode. The admin's Guest view tab loads it in an iframe. Without the params nothing changes.
 - Preserve offline behaviour — all shell assets must be in the cache list.
 - Tablet-first layout, nautical luxury visual language.
 

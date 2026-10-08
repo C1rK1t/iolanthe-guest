@@ -1,12 +1,14 @@
-const STATIC_CACHE_NAME = "iolanthe-onboard-static-v4";
+const STATIC_CACHE_NAME = "iolanthe-onboard-static-v5";
 const LEAFLET_ASSET_CACHE_NAME = "iolanthe-onboard-leaflet-v1";
 
+// The local CSS/JS carry the same ?v= as index.html: the cache is keyed by the full URL, so a new ?v= is fetched fresh.
 const STATIC_ASSETS = [
   "/",
   "/index.html",
-  "/guest.css",
-  "/guest.js",
-  "/itinerary-days.js",
+  "/guest.css?v=guest-b-1",
+  "/guest.js?v=guest-b-1",
+  "/itinerary-days.js?v=guest-b-1",
+  "/preview-mode.js?v=guest-b-1",
   "/manifest.json",
   "/manifest.webmanifest",
   "/vendor/hls.min.js",
@@ -32,7 +34,7 @@ const STATIC_ASSETS = [
   "/assets/moon-phases/waning-cres-875.png"
 ];
 
-const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS);
+const STATIC_ASSET_PATHS = new Set(STATIC_ASSETS.map(asset => asset.split("?")[0]));
 const LEAFLET_ASSET_HOSTS = new Set(["unpkg.com"]);
 const CACHEABLE_STATIC_EXTENSIONS = new Set([
   ".css",
@@ -81,7 +83,7 @@ self.addEventListener("fetch", event => {
     return;
   }
 
-  if (isAdminRequest(url) || isLiveDataRequest(url)) {
+  if (isAdminRequest(url) || isLiveDataRequest(url) || url.searchParams.has("preview")) {
     event.respondWith(networkOnly(event.request));
     return;
   }
