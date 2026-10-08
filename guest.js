@@ -2266,7 +2266,8 @@
         month: "short",
         day: "numeric",
         hour: "2-digit",
-        minute: "2-digit"
+        minute: "2-digit",
+        hour12: false
       });
     }
 
@@ -2366,7 +2367,8 @@
       return date.toLocaleTimeString([], {
         hour: "2-digit",
         minute: "2-digit",
-        second: "2-digit"
+        second: "2-digit",
+        hour12: false
       });
     }
 
@@ -3499,7 +3501,7 @@
       setOptionalStatus(
         status,
         updatedAt
-          ? `Live NMEA update ${new Date(updatedAt).toLocaleTimeString()}.${windNote}${routeNote}`
+          ? `Live NMEA update ${new Date(updatedAt).toLocaleTimeString([], { hour12: false })}.${windNote}${routeNote}`
           : `Live NMEA data active.${windNote}${routeNote}`,
         false
       );
@@ -3594,8 +3596,9 @@
         return "";
       }
       return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit"
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
       }).format(date);
     }
 
@@ -3612,8 +3615,9 @@
         return "\u2014";
       }
       return new Intl.DateTimeFormat(undefined, {
-        hour: "numeric",
-        minute: "2-digit"
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
       }).format(date);
     }
 
@@ -5574,8 +5578,9 @@
         weekday: "long",
         month: "short",
         day: "numeric",
-        hour: "numeric",
-        minute: "2-digit"
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false
       }).format(new Date());
     }
 
