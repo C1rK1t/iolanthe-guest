@@ -50,7 +50,9 @@ The guest app has no server of its own — it is served by iolanthe-server.
 - Preview mode (charter rework spec B): `?preview=YYYY-MM-DD&charter=<id>` (parsed by `preview-mode.js`) replaces the
   browser clock in `calculateCurrentCharterDayState` / `getCurrentDateKey`, adds the params to `/api/charter`,
   `/api/planned-route` and `/api/track`, shows a red banner, and switches off the SW registration, the install prompt
-  and idle mode. The admin's Guest view tab loads it in an iframe. Without the params nothing changes.
+  and idle mode. In a preview the NMEA snapshot is a stand-in (`previewSnapshot`: the position where the boat spends
+  that night, `previewPosition`; no readings) and the Navigation, Weather, Vessel Info and Safety tabs are greyed out
+  (`isTabOff`). The admin's Guest view tab loads it in an iframe. Without the params nothing changes.
 - Preserve offline behaviour — all shell assets must be in the cache list.
 - Tablet-first layout, nautical luxury visual language.
 

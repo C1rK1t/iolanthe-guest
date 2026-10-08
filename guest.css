@@ -650,6 +650,16 @@
       border-color: rgba(216,179,106,0.7);
     }
 
+    /* Spec B follow-up: tabs a preview greys out */
+    .tab-btn.tab-btn--preview-off,
+    .tab-btn.tab-btn--preview-off:hover {
+      opacity: 0.35;
+      cursor: not-allowed;
+      background: rgba(255,255,255,0.02);
+      color: #d8c089;
+      border-color: rgba(216,179,106,0.28);
+    }
+
     .hero-card,
     .card {
       background: linear-gradient(180deg, rgba(28,71,109,0.96) 0%, rgba(20,56,87,0.96) 100%);
