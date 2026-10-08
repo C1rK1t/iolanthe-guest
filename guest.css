@@ -25,6 +25,24 @@
       min-height: 100vh;
     }
 
+    /* Spec B: the preview banner (admin Guest view). Sticky above the sticky header, which moves down by its height. */
+    .guest-preview-banner {
+      position: sticky;
+      top: 0;
+      z-index: 21;
+      height: 22px;
+      line-height: 22px;
+      background: #a93d35;
+      color: #fff;
+      font: 700 12px/22px system-ui, -apple-system, "Segoe UI", sans-serif;
+      letter-spacing: .08em;
+      text-align: center;
+      white-space: nowrap;
+      overflow: hidden;
+    }
+    .guest-preview-banner--problem { background: #6d1f1a; }
+    html.guest-preview header { top: 22px; }
+
     header {
       position: sticky;
       top: 0;

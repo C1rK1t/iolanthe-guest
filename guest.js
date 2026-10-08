@@ -53,12 +53,18 @@
     const CARDINAL_DIRECTIONS = ["N", "NE", "E", "SE", "S", "SW", "W", "NW"];
     const AVAILABLE_ALCOHOL_MAX_PRICE = 999999;
     const AVAILABLE_ALCOHOL_SUBCATEGORY_FALLBACK = "Other";
-    const CHARTER_API_URL = "/api/charter";
+    // Charter rework spec B: the admin's Guest view loads this page with ?preview=YYYY-MM-DD&charter=<id>. The preview
+    // date replaces the browser clock for every charter-date decision; weather and NMEA stay live.
+    const PREVIEW_MODULE = window.IolantheGuestPreview || null;
+    const PREVIEW = PREVIEW_MODULE ? PREVIEW_MODULE.parsePreview(location.search) : { active: false, date: "", charterId: "" };
+    const previewApiUrl = url => (PREVIEW_MODULE ? PREVIEW_MODULE.withPreviewParams(url, PREVIEW) : url);
+    let previewProblemStatus = 0;
+    const CHARTER_API_URL = previewApiUrl("/api/charter");
     const CHARTER_REFRESH_INTERVAL_MS = 30 * 1000;
     const LOCAL_DAY_MS = 24 * 60 * 60 * 1000;
     const NMEA_API_URL = "/api/nmea";
-    const TRACK_API_URL = "/api/track";
-    const PLANNED_ROUTE_API_URL = "/api/planned-route";
+    const TRACK_API_URL = previewApiUrl("/api/track");
+    const PLANNED_ROUTE_API_URL = previewApiUrl("/api/planned-route");
     const TRACK_POLL_INTERVAL_MS = 30 * 1000;
     const VERSION_API_URL = "/api/version";
     const INSTALL_PROMPT_DISMISSED_KEY = "iolanthe-onboard-install-dismissed-v1";
@@ -352,12 +358,47 @@
     }
 
     function redirectToGuestLanding() {
+      if (PREVIEW.active) {
+        return;
+      }
       window.location.href = "/";
+    }
+
+    // Spec B §4.4: a refused preview (401 session expired, 404 charter deleted) shows in the banner; the guest never
+    // falls back to the active charter's data inside a preview.
+    function notePreviewProblem(error) {
+      const status = error && Number(error.status);
+      if (!PREVIEW.active || (status !== 401 && status !== 404)) {
+        return;
+      }
+      previewProblemStatus = status;
+      syncPreviewBanner();
+    }
+
+    function syncPreviewBanner() {
+      if (!PREVIEW.active || !PREVIEW_MODULE) {
+        return;
+      }
+      document.documentElement.classList.add("guest-preview");
+      let banner = document.getElementById("guestPreviewBanner");
+      if (!banner) {
+        banner = document.createElement("div");
+        banner.id = "guestPreviewBanner";
+        banner.className = "guest-preview-banner";
+        banner.setAttribute("role", "status");
+        document.body.prepend(banner);
+      }
+      banner.textContent = PREVIEW_MODULE.bannerText(PREVIEW, previewProblemStatus);
+      banner.classList.toggle("guest-preview-banner--problem", previewProblemStatus !== 0);
     }
 
     async function loadJSON(path) {
       const res = await fetch(path, { cache: "no-store" });
-      if (!res.ok) throw new Error(`Failed to load ${path}: ${res.status}`);
+      if (!res.ok) {
+        const error = new Error(`Failed to load ${path}: ${res.status}`);
+        error.status = res.status;
+        throw error;
+      }
       const text = await res.text();
       try {
         return JSON.parse(text);
@@ -371,6 +412,7 @@
         return await loadJSON(CHARTER_API_URL);
       } catch (error) {
         console.error(error);
+        notePreviewProblem(error);
         return {
           settings: DEFAULT_SETTINGS_DATA,
           navigation: DEFAULT_NAVIGATION_DATA,
@@ -542,7 +584,7 @@
     }
 
     function registerGuestServiceWorker() {
-      if (!("serviceWorker" in navigator)) {
+      if (!("serviceWorker" in navigator) || PREVIEW.active) {
         return;
       }
 
@@ -749,7 +791,7 @@
         : [];
       const firstDayNumber = dayNumbers.length ? Math.min(...dayNumbers) : 1;
       const finalDayNumber = dayNumbers.length ? Math.max(...dayNumbers) : firstDayNumber;
-      const today = normalizeLocalDate(options.today === undefined ? new Date() : options.today);
+      const today = normalizeLocalDate(options.today !== undefined ? options.today : (PREVIEW.active ? PREVIEW.date : new Date()));
       const startDate = normalizeLocalDate(options.startDate);
       const endDate = normalizeLocalDate(options.endDate);
       const localDateKey = localDateKeyFromDate(today);
@@ -874,7 +916,7 @@
     }
 
     function getCurrentDateKey() {
-      return localDateKeyFromDate(normalizeLocalDate(new Date()));
+      return localDateKeyFromDate(normalizeLocalDate(PREVIEW.active ? PREVIEW.date : new Date()));
     }
 
     function formatCharterDayLabel(value, fallbackIndex) {
@@ -5301,6 +5343,9 @@
     }
 
     function enterIdleMode() {
+      if (PREVIEW.active) {
+        return;
+      }
       if (!isTabletOrLarger()) {
         exitIdleForMobile();
         redirectToGuestLanding();
@@ -7963,6 +8008,7 @@
         if (!options.silent) {
           console.error(error);
         }
+        notePreviewProblem(error);
         return null;
       }).finally(() => {
         charterRefreshPromise = null;
@@ -8044,7 +8090,11 @@
       }
     });
 
-    initializeInstallPrompt();
+    if (PREVIEW.active) {
+      syncPreviewBanner();
+    } else {
+      initializeInstallPrompt();
+    }
     registerGuestServiceWorker();
 
     loadSiteFooterVersion();
