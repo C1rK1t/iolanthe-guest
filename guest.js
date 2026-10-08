@@ -59,6 +59,7 @@
     const PREVIEW = PREVIEW_MODULE ? PREVIEW_MODULE.parsePreview(location.search) : { active: false, date: "", charterId: "" };
     const previewApiUrl = url => (PREVIEW_MODULE ? PREVIEW_MODULE.withPreviewParams(url, PREVIEW) : url);
     let previewProblemStatus = 0;
+    const isPreviewOffTab = tabId => Boolean(PREVIEW_MODULE && PREVIEW_MODULE.isTabOff(PREVIEW, tabId));
     const CHARTER_API_URL = previewApiUrl("/api/charter");
     const CHARTER_REFRESH_INTERVAL_MS = 30 * 1000;
     const LOCAL_DAY_MS = 24 * 60 * 60 * 1000;
@@ -1282,24 +1283,30 @@
       tabsWrap.innerHTML = "";
       const tabs = getRenderedTabs();
 
-      if (!tabs.some(tab => tab.id === currentTabId)) {
-        currentTabId = tabs[0] ? tabs[0].id : defaultTabs[0].id;
+      const usableTabs = tabs.filter(tab => !isPreviewOffTab(tab.id));
+      if (!usableTabs.some(tab => tab.id === currentTabId)) {
+        currentTabId = usableTabs[0] ? usableTabs[0].id : defaultTabs[0].id;
       }
 
       tabs.forEach(tab => {
+        // In a preview, live or same-every-day tabs stay visible but greyed out (spec B follow-up).
+        const off = isPreviewOffTab(tab.id);
         const btn = el("button", {
-          class: "tab-btn" + (tab.id === currentTabId ? " active" : ""),
+          class: "tab-btn" + (tab.id === currentTabId ? " active" : "") + (off ? " tab-btn--preview-off" : ""),
           "data-tab": tab.id,
-          type: "button"
+          type: "button",
+          ...(off ? { disabled: "", title: "Not available in preview" } : {})
         }, [tab.label]);
 
-        btn.addEventListener("click", () => activateTab(tab.id));
+        if (!off) {
+          btn.addEventListener("click", () => activateTab(tab.id));
+        }
         tabsWrap.appendChild(btn);
       });
     }
 
     function activateTab(tabId) {
-      const tabs = getRenderedTabs();
+      const tabs = getRenderedTabs().filter(tab => !isPreviewOffTab(tab.id));
       const targetTabId = tabs.some(tab => tab.id === tabId)
         ? tabId
         : (tabs[0] ? tabs[0].id : defaultTabs[0].id);
@@ -3312,6 +3319,12 @@
     }
 
     async function fetchNmeaSnapshot() {
+      if (PREVIEW.active && PREVIEW_MODULE) {
+        // Spec B follow-up: no live NMEA in a preview; the boat sits where it spends the preview night.
+        const route = itineraryData && itineraryData.route;
+        const day = PREVIEW_MODULE.previewDayNumber(itineraryData && itineraryData.start_date, PREVIEW.date);
+        return PREVIEW_MODULE.previewSnapshot(PREVIEW_MODULE.previewPosition(route && route.points, day));
+      }
       const response = await fetch(NMEA_API_URL, { cache: "no-store" });
       if (!response.ok) {
         throw new Error(`NMEA endpoint returned ${response.status}.`);
