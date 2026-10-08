@@ -30,6 +30,8 @@ iolanthe-guest/
   guest.css               All styles (extracted from monorepo index.html)
   guest.js                All client-side JavaScript (extracted from monorepo)
   sw.js                   Service worker for offline shell caching
+  itinerary-days.js       Guest days derived from the v2 itinerary (pure, node --test)
+  preview-mode.js         Preview mode params, API URLs, banner text (pure, node --test)
   manifest.json
   manifest.webmanifest
   moon-phase.js           TEMPORARY COPY — remove after Step 3 cutover
