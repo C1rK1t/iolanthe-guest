@@ -2715,19 +2715,14 @@
       );
     }
 
-    // Charter rework spec A §6: days are derived from the v2 itinerary. A v1 payload (no `version`) goes through the
-    // converter for one release.
+    // Charter rework spec A §6: days are derived from the v2 itinerary; anything else shows no days.
     function getItineraryDays(source = itineraryData) {
       const data = source && typeof source === "object" ? source : {};
       const mod = window.IolantheItineraryDays;
-      if (!mod) {
+      if (!mod || data.version !== 2) {
         return [];
       }
-      const dayCount = mod.charterDayCount(data);
-      if (data.version === 2) {
-        return mod.deriveGuestDays(data, dayCount, charterSitesData);
-      }
-      return mod.v1ToGuestDays(data, dayCount, charterSitesData);
+      return mod.deriveGuestDays(data, mod.charterDayCount(data), charterSitesData);
     }
 
     function getItineraryMapPoints() {
