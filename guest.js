@@ -7992,6 +7992,10 @@
         const bundle = await loadJSON(CHARTER_API_URL);
 
         applySavedCharterBundle(bundle);
+        if (previewProblemStatus) {
+          previewProblemStatus = 0;   // the admin logged in again: back to the date banner
+          syncPreviewBanner();
+        }
         syncPlannedRouteLayers();
         syncNmeaUi();
         syncDynamicTabsAndPanels();
