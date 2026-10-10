@@ -35,8 +35,6 @@ iolanthe-guest/
   manifest.json
   manifest.webmanifest
   moon-phase.js           TEMPORARY COPY — remove after Step 3 cutover
-  vendor/
-    hls.min.js            Vendored HLS player for OBS screensaver feed
   assets/
     icons/onboard/        Guest PWA favicons and home-screen icons
     moon-phases/          Moon phase images
@@ -70,7 +68,7 @@ Rules:
   telemetry data must always come from the network.
 - All files listed in `STATIC_ASSETS` must physically exist in the repo.
 
-Current version: `iolanthe-onboard-static-v2`
+Current version: `iolanthe-onboard-static-v8`
 
 ## Guest PWA and QR Install
 
@@ -91,7 +89,7 @@ After any change:
 2. `/api/nmea` telemetry updates the header position strip.
 3. Leaflet map loads and shows the vessel marker.
 4. Service worker installs and the app shell loads offline after first visit.
-5. OBS HLS screensaver activates after idle timeout.
+5. At tablet size and wider, the idle screen comes up after the idle timeout and its map cycles through the zoom levels.
 6. No 404s for CSS, JS, or image assets.
 
 ## Working with Codex / Claude
