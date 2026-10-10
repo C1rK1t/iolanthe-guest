@@ -30,13 +30,27 @@ test("index.html has no idle feed and no fade overlay", () => {
 test("guest.js has no OBS feed code and reads nothing from navigation.json", () => {
   const source = read("guest.js");
   const gone = [
-    /obs(?=[A-Z_-])/, /Obs(?=[A-Z])/, /OBS/, /\[obs\]/, /\bHls\b/, /hls_url/, /stream_key/, /stream_url/, /m3u8/,
-    /navigationData/, /DEFAULT_NAVIGATION_DATA/, /charterData\.navigation/, /renderNavigationTab\(navigation\)/,
-    /idleTransition/, /Bridge Notes/, /Configured vessel position/, /configured fallback/i,
-    /fallback latitude and longitude/, /stream-frame/, /navigation-feed/
+    /(?<![A-Za-z])obs(?=[A-Z_-])/, /Obs(?=[A-Z])/, /(?<![A-Za-z])OBS(?![A-Za-z])/, /\[obs\]/, /hls/i, /stream_key/,
+    /stream_url/, /m3u8/, /navigationData/, /DEFAULT_NAVIGATION_DATA/, /charterData\.navigation/,
+    /renderNavigationTab\(navigation\)/, /idleTransition/, /Bridge Notes/, /Configured vessel position/,
+    /configured fallback/i, /fallback latitude and longitude/, /stream-frame/, /navigation-feed/
   ];
   for (const pattern of gone) {
     assert.equal(pattern.test(source), false, String(pattern));
+  }
+});
+
+// The helpers that served only the feed, its full-screen shell and the idle fade: a call left behind would throw when
+// the idle screen or the Navigation tab opens.
+test("guest.js keeps none of the feed's helpers", () => {
+  const source = read("guest.js");
+  for (const name of [
+    "resumeIdleVisualCycle", "finishIdlePhaseTransition", "runIdlePhaseTransition", "clearIdleTransitionTimers",
+    "destroyEmbeddedMedia", "cleanupNavigationVideo", "wrapNavigationFeed", "bindNavigationFeedFullscreen",
+    "getConfiguredWeatherCoords", "getDocumentFullscreenElement", "requestElementFullscreen", "exitActiveFullscreen",
+    "isBrowserEmbeddableUrl", "setNavigationStreamStatus", "buildNavigationMedia", "canShowIdleObsFeed"
+  ]) {
+    assert.equal(new RegExp(`\\b${name}\\b`).test(source), false, name);
   }
 });
 
@@ -53,11 +67,22 @@ test("guest.css has no feed or fade styles, and keeps .empty-stream for the Weat
 });
 
 test("index.html and sw.js load the same ?v= tag for every local CSS and JS file", () => {
-  const html = read("index.html");
+  const tagged = text => [...text.matchAll(/"(\/[\w.-]+\.(?:css|js))\?v=([\w.-]+)"/g)].map(([, file, tag]) => `${file}?v=${tag}`).sort();
+  const inHtml = tagged(read("index.html"));
+  assert.ok(inHtml.length > 0);
+  assert.deepEqual(tagged(read("sw.js")), inHtml);
+});
+
+// The service worker skips a precache entry it cannot fetch without a word (sw.js precacheStaticAssets), so a file
+// deleted with its entry left behind would go unnoticed.
+test("every file sw.js precaches is in the repo", () => {
   const sw = read("sw.js");
-  const tagged = [...html.matchAll(/(?:href|src)="(\/[\w.-]+\.(?:css|js))\?v=([\w.-]+)"/g)];
-  assert.equal(tagged.length, 4);
-  for (const [, file, tag] of tagged) {
-    assert.ok(sw.includes(`"${file}?v=${tag}"`), `${file}?v=${tag} is not in sw.js`);
+  const start = sw.indexOf("const STATIC_ASSETS = [");
+  const assets = [...sw.slice(start, sw.indexOf("];", start)).matchAll(/"([^"]+)"/g)]
+    .map(([, asset]) => asset.split("?")[0])
+    .filter(asset => asset !== "/");
+  assert.ok(assets.length > 10);
+  for (const asset of assets) {
+    assert.ok(fs.existsSync(path.join(ROOT, asset)), asset);
   }
 });

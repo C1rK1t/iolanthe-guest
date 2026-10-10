@@ -101,4 +101,6 @@ After any change:
 
 ## Tests
 
-Tests: `node --test` runs `test/itinerary-days.test.js`. `itinerary-days.js` is a UMD module shared by the browser and the tests.
+Tests: `node --test` runs the tests in `test/` (22): `itinerary-days.js` and `preview-mode.js` are UMD modules shared by
+the browser and the tests; `obs-feed-removed.test.js` reads the shipped files (no OBS feed code, the `?v=` tags in
+`index.html` and `sw.js` match, every precached file exists).
