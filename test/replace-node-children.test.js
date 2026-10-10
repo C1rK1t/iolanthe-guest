@@ -36,9 +36,10 @@ function fakeText(text) {
   return { nodeType: 3, textContent: String(text) };
 }
 
-// Just enough of an element for el() and replaceNodeChildren(); anything else it is asked for is a stand-in. Its
-// replaceChildren() does what a browser's does with an argument that is not a node: it writes String(value) as a text
-// node, so a null becomes the text "null". { modern: false } leaves replaceChildren() out, for the fallback path.
+// Just enough of an element for el(), replaceNodeChildren() and the idle weather render; it has no classList, style or
+// dataset, so a load path that starts using one needs it added here. Its replaceChildren() does what a browser's does
+// with an argument that is not a node: it writes String(value) as a text node, so a null becomes the text "null".
+// { modern: false } leaves replaceChildren() out, for the fallback path.
 function fakeElement(tagName, { modern = true } = {}) {
   let childNodes = [];
   const element = {
