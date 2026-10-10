@@ -70,7 +70,7 @@ Rules:
   telemetry data must always come from the network.
 - All files listed in `STATIC_ASSETS` must physically exist in the repo.
 
-Current version: `iolanthe-onboard-static-v2`
+Current version: `iolanthe-onboard-static-v9`
 
 ## Guest PWA and QR Install
 
@@ -103,4 +103,6 @@ After any change:
 
 ## Tests
 
-Tests: `node --test` runs `test/itinerary-days.test.js`. `itinerary-days.js` is a UMD module shared by the browser and the tests.
+Tests: `node --test` runs everything in `test/`. `itinerary-days.js` and `preview-mode.js` are UMD modules shared by the
+browser and the tests. `guest.js` is not a module: `test/replace-node-children.test.js` loads it whole in a `vm` sandbox
+with a small fake DOM (the way the admin's `startup-order.test.js` loads `admin.js`) and calls its functions there.
