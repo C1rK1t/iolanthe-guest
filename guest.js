@@ -575,8 +575,11 @@
         return;
       }
 
+      // Leave out what el() leaves out (null, undefined, false): replaceChildren() would write a null as the text "null".
+      const kept = children.filter(child => typeof child === "string" || child);
+
       if (typeof node.replaceChildren === "function") {
-        node.replaceChildren(...children);
+        node.replaceChildren(...kept);
         return;
       }
 
@@ -584,9 +587,9 @@
         node.removeChild(node.firstChild);
       }
 
-      children.forEach(child => {
+      kept.forEach(child => {
         if (typeof child === "string") node.appendChild(document.createTextNode(child));
-        else if (child) node.appendChild(child);
+        else node.appendChild(child);
       });
     }
 
