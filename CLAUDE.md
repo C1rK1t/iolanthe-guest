@@ -26,7 +26,6 @@ iolanthe-guest  (PWA — index.html, guest.css, guest.js)
 
 - Plain HTML, CSS, JavaScript — no build step, no framework
 - Leaflet for the moving map (CDN, cached by service worker)
-- HLS.js vendored at `vendor/hls.min.js` for OBS screensaver feed
 - `sw.js` service worker for offline shell caching
 
 ## Running locally
@@ -41,7 +40,7 @@ The guest app has no server of its own — it is served by iolanthe-server.
 
 ## Key constraints
 
-- No build step. No npm. No dependencies beyond vendor files.
+- No build step. No npm. No dependencies besides Leaflet (CDN).
 - Keep all API calls as relative URLs.
 - Never cache /api/* routes in the service worker.
 - Bump STATIC_CACHE_NAME in sw.js whenever static assets change.

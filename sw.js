@@ -1,17 +1,16 @@
-const STATIC_CACHE_NAME = "iolanthe-onboard-static-v9";
+const STATIC_CACHE_NAME = "iolanthe-onboard-static-v10";
 const LEAFLET_ASSET_CACHE_NAME = "iolanthe-onboard-leaflet-v1";
 
 // The local CSS/JS carry the same ?v= as index.html: the cache is keyed by the full URL, so a new ?v= is fetched fresh.
 const STATIC_ASSETS = [
   "/",
   "/index.html",
-  "/guest.css?v=guest-b-5",
-  "/guest.js?v=guest-b-5",
-  "/itinerary-days.js?v=guest-b-5",
-  "/preview-mode.js?v=guest-b-5",
+  "/guest.css?v=guest-b-6",
+  "/guest.js?v=guest-b-6",
+  "/itinerary-days.js?v=guest-b-6",
+  "/preview-mode.js?v=guest-b-6",
   "/manifest.json",
   "/manifest.webmanifest",
-  "/vendor/hls.min.js",
   "/images/shoulder-patch.svg",
   "/images/chest-logo-wide.png",
   "/images/icon-route.png",
