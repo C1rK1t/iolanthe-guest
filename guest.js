@@ -45,7 +45,6 @@
       site_subtitle: "Guest Portal",
       tabs: defaultTabs
     };
-    const DEFAULT_NAVIGATION_DATA = {};
     const WEATHER_TAB = { id: "weather", label: "Weather" };
     const WEATHER_API_URL = "/api/weather";
     const WEATHER_POLL_INTERVAL_MS = 30 * 60 * 1000;
@@ -70,10 +69,6 @@
     const VERSION_API_URL = "/api/version";
     const INSTALL_PROMPT_DISMISSED_KEY = "iolanthe-onboard-install-dismissed-v1";
     const NMEA_POLL_INTERVAL_MS = 5000;
-    const OBS_RETRY_BASE_MS = 5000;
-    const OBS_RETRY_MAX_MS = 60000;
-    const OBS_RETRY_MAX_ATTEMPTS = 5;
-    const OBS_IDLE_READY_TIMEOUT_MS = 12000;
     // Offshore tile providers may not supply usable data at lower zooms.
     // Keep the idle/moving map above this zoom to avoid "No Map Data Yet Available" tiles.
     const OFFSHORE_SAFE_MIN_ZOOM = 9;
@@ -211,11 +206,6 @@
       }
       return lookup;
     }, {}));
-    const IDLE_OBS_RATIO_DEFAULT = {
-      raw: "16:9",
-      css: "16 / 9",
-      number: 16 / 9
-    };
     const IDLE_SCREENSAVER_DEFAULTS = {
       enabled: false,
       timeout_seconds: 180,
@@ -226,13 +216,6 @@
         longitude: 0
       }],
       zoom_cycle_seconds: 15,
-      obsFeedEnabled: true,
-      obs_feed_interval_seconds: 300,
-      obs_feed_duration_seconds: 45,
-      obs_feed_transition_seconds: 2,
-      obs_ratio: IDLE_OBS_RATIO_DEFAULT.raw,
-      obs_ratio_css: IDLE_OBS_RATIO_DEFAULT.css,
-      obs_ratio_number: IDLE_OBS_RATIO_DEFAULT.number,
       show_weather: true,
       show_itinerary: true,
       show_telemetry: true,
@@ -246,7 +229,6 @@
     let currentDrinksSubPageId = "included-drinks";
     let charterBundleData = {};
     let charterSitesData = { sites: [] };
-    let navigationData = null;
     let itineraryData = null;
     let selectedItineraryDayId = "";
     let lastResolvedItineraryCurrentDayNumber = null;
@@ -257,11 +239,6 @@
     let weatherRefreshTimer = null;
     let idleClockTimer = null;
     let idleZoomTimer = null;
-    let idleObsFeedTimer = null;
-    let idleObsFeedDurationTimer = null;
-    let idleObsFeedReadyTimer = null;
-    let idleTransitionTimer = null;
-    let idleTransitionMidpointTimer = null;
     let weatherRequestId = 0;
     let weatherRequestPromise = null;
     let weatherLastRequestAt = 0;
@@ -317,16 +294,6 @@
       retentionDaysAfterCharter: 3,
       points: []
     };
-    let obsFeedState = {
-      startToken: 0,
-      retryTimer: null,
-      retryAttempt: 0,
-      failureLogged: false,
-      lastConfigSignature: "",
-      lastEnabled: IDLE_SCREENSAVER_DEFAULTS.obsFeedEnabled,
-      lastLoadedEnabled: null,
-      lastIdleDecisionSignature: ""
-    };
     let idleState = {
       active: false,
       enabled: false,
@@ -334,10 +301,7 @@
       timerId: 0,
       timeoutMs: IDLE_SCREENSAVER_DEFAULTS.timeout_seconds * 1000,
       lastMousemoveAt: 0,
-      zoomIndex: 0,
-      showingObsFeed: false,
-      obsFeedReady: false,
-      transitioning: false
+      zoomIndex: 0
     };
     let idleMapState = {
       map: null,
@@ -416,7 +380,6 @@
         notePreviewProblem(error);
         return {
           settings: DEFAULT_SETTINGS_DATA,
-          navigation: DEFAULT_NAVIGATION_DATA,
           itinerary: {},
           menus: {},
           drinks: {},
@@ -451,27 +414,6 @@
       } catch (error) {
         syncSiteFooterVersion(null);
       }
-    }
-
-    function logObsFeed(level, message, detail) {
-      if (typeof console === "undefined") {
-        return;
-      }
-      const logger = typeof console[level] === "function" ? console[level] : console.log;
-      if (detail === undefined) {
-        logger.call(console, `[obs] ${message}`);
-      } else {
-        logger.call(console, `[obs] ${message}`, detail);
-      }
-    }
-
-    function logIdleObsDecision(message, detail) {
-      const signature = `${message}|${detail || ""}`;
-      if (signature === obsFeedState.lastIdleDecisionSignature) {
-        return;
-      }
-      obsFeedState.lastIdleDecisionSignature = signature;
-      logObsFeed("info", message, detail);
     }
 
     function isStandaloneDisplayMode() {
@@ -1145,110 +1087,6 @@
       return validChildren.length ? normalizeMenuChildSections(day, validChildren) : normalizeLegacyMenuSections(day);
     }
 
-    function getDocumentFullscreenElement() {
-      return document.fullscreenElement || document.webkitFullscreenElement || document.msFullscreenElement || null;
-    }
-
-    async function requestElementFullscreen(node) {
-      if (!node) {
-        return false;
-      }
-
-      const request = node.requestFullscreen || node.webkitRequestFullscreen || node.msRequestFullscreen;
-      if (typeof request === "function") {
-        const result = request.call(node);
-        if (result && typeof result.then === "function") {
-          await result;
-        }
-        return true;
-      }
-
-      const video = node.querySelector && node.querySelector("video");
-      if (video && typeof video.webkitEnterFullscreen === "function") {
-        video.webkitEnterFullscreen();
-        return true;
-      }
-
-      return false;
-    }
-
-    async function exitActiveFullscreen() {
-      const exit = document.exitFullscreen || document.webkitExitFullscreen || document.msExitFullscreen;
-      if (typeof exit !== "function") {
-        return;
-      }
-
-      const result = exit.call(document);
-      if (result && typeof result.then === "function") {
-        await result;
-      }
-    }
-
-    function bindNavigationFeedFullscreen(shell) {
-      if (!shell || shell.dataset.fullscreenBound === "true") {
-        return shell;
-      }
-
-      shell.dataset.fullscreenBound = "true";
-      shell.tabIndex = 0;
-      shell.setAttribute("role", "button");
-      shell.setAttribute("aria-label", "Navigation feed. Double-click for full screen; click or Escape to exit.");
-
-      const syncState = () => {
-        shell.classList.toggle("is-fullscreen", getDocumentFullscreenElement() === shell);
-      };
-
-      shell.addEventListener("dblclick", event => {
-        event.preventDefault();
-        if (getDocumentFullscreenElement() === shell) {
-          exitActiveFullscreen().catch(() => {});
-          return;
-        }
-        requestElementFullscreen(shell).catch(() => {});
-      });
-
-      shell.addEventListener("click", () => {
-        if (getDocumentFullscreenElement() === shell) {
-          exitActiveFullscreen().catch(() => {});
-        }
-      });
-
-      shell.addEventListener("keydown", event => {
-        if (event.key === "Enter" || event.key === " ") {
-          event.preventDefault();
-          if (getDocumentFullscreenElement() === shell) {
-            exitActiveFullscreen().catch(() => {});
-            return;
-          }
-          requestElementFullscreen(shell).catch(() => {});
-        }
-      });
-
-      document.addEventListener("fullscreenchange", syncState);
-      document.addEventListener("webkitfullscreenchange", syncState);
-      shell._navigationFeedCleanup = () => {
-        document.removeEventListener("fullscreenchange", syncState);
-        document.removeEventListener("webkitfullscreenchange", syncState);
-        shell._navigationFeedCleanup = null;
-      };
-      syncState();
-      return shell;
-    }
-
-    function wrapNavigationFeed(mediaNode, statusNode = null, attributes = {}) {
-      const children = [mediaNode];
-      if (statusNode) {
-        children.push(statusNode);
-      }
-      const className = attributes.class
-        ? `navigation-feed-shell ${attributes.class}`
-        : "navigation-feed-shell";
-      return bindNavigationFeedFullscreen(el("div", {
-        ...attributes,
-        class: className
-      }, children));
-    }
-
     function syncSiteFooterVisibility() {
       const footer = document.getElementById("siteFooter");
       if (!footer) {
@@ -1325,9 +1163,6 @@
           invalidateNavigationMapSize();
           window.setTimeout(() => invalidateNavigationMapSize(), 120);
         });
-        startObsFeed({ forceReload: false, resetFailureCycle: true });
-      } else {
-        stopObsFeed();
       }
 
       window.requestAnimationFrame(syncSiteFooterVisibility);
@@ -1352,471 +1187,6 @@
       return documentPath.includes("#")
         ? `${documentPath}&toolbar=0&navpanes=0&scrollbar=0`
         : `${documentPath}#toolbar=0&navpanes=0&scrollbar=0`;
-    }
-
-    function isBrowserEmbeddableUrl(url) {
-      return /^(https?:\/\/|\/|\.\/|\.\.\/)/i.test((url || "").trim());
-    }
-
-    function isHlsPlaylistUrl(url) {
-      return /\.m3u8($|[?#])/i.test((url || "").trim());
-    }
-
-    function resolveNavigationHlsUrl(data) {
-      const explicitHlsUrl = (data.hls_url || "").trim();
-      if (isBrowserEmbeddableUrl(explicitHlsUrl)) {
-        return explicitHlsUrl;
-      }
-
-      const legacyStreamUrl = (data.stream_url || "").trim();
-      if (isBrowserEmbeddableUrl(legacyStreamUrl) && isHlsPlaylistUrl(legacyStreamUrl)) {
-        return legacyStreamUrl;
-      }
-
-      const streamKey = (data.stream_key || "").trim();
-
-      if (!legacyStreamUrl || !streamKey || !isBrowserEmbeddableUrl(legacyStreamUrl)) {
-        return "";
-      }
-
-      try {
-        return new URL(`/hls/${encodeURIComponent(streamKey)}.m3u8`, legacyStreamUrl).toString();
-      } catch (error) {
-        return "";
-      }
-    }
-
-    function setNavigationStreamStatus(node, message) {
-      setOptionalStatus(node, message, true);
-    }
-
-    function clearObsFeedRetryTimer() {
-      if (obsFeedState.retryTimer) {
-        window.clearTimeout(obsFeedState.retryTimer);
-        obsFeedState.retryTimer = null;
-      }
-    }
-
-    function resetObsFeedFailureCycle() {
-      clearObsFeedRetryTimer();
-      obsFeedState.retryAttempt = 0;
-      obsFeedState.failureLogged = false;
-    }
-
-    function scheduleObsFeedRetry(statusNode, reason) {
-      if (!isObsFeedEnabled(getIdleScreensaverSettings()) || currentTabId !== "navigation") {
-        return;
-      }
-
-      if (obsFeedState.retryTimer) {
-        return;
-      }
-
-      if (obsFeedState.retryAttempt >= OBS_RETRY_MAX_ATTEMPTS) {
-        if (!obsFeedState.failureLogged) {
-          logObsFeed("warn", "OBS feed unavailable.", reason || "Unknown OBS feed error.");
-          obsFeedState.failureLogged = true;
-        }
-        setNavigationStreamStatus(
-          statusNode,
-          "OBS feed is unavailable. It will retry when Navigation is opened again or settings change."
-        );
-        return;
-      }
-
-      const delay = Math.min(
-        OBS_RETRY_MAX_MS,
-        OBS_RETRY_BASE_MS * Math.pow(2, Math.max(0, obsFeedState.retryAttempt))
-      );
-      obsFeedState.retryAttempt += 1;
-
-      if (!obsFeedState.failureLogged) {
-        logObsFeed("warn", "OBS feed unavailable.", reason || "Unknown OBS feed error.");
-        obsFeedState.failureLogged = true;
-      }
-
-      setNavigationStreamStatus(
-        statusNode,
-        `OBS feed is unavailable. Retrying in ${Math.round(delay / 1000)} seconds.`
-      );
-
-      const token = obsFeedState.startToken;
-      obsFeedState.retryTimer = window.setTimeout(() => {
-        obsFeedState.retryTimer = null;
-        if (token !== obsFeedState.startToken || currentTabId !== "navigation" || !isObsFeedEnabled(getIdleScreensaverSettings())) {
-          return;
-        }
-        startObsFeed({ forceReload: true });
-      }, delay);
-    }
-
-    function cleanupNavigationVideo(video) {
-      if (!video) {
-        return;
-      }
-
-      if (Array.isArray(video._obsEventCleanups)) {
-        video._obsEventCleanups.forEach(cleanup => {
-          try {
-            cleanup();
-          } catch (error) {
-            // Ignore listener cleanup issues during teardown.
-          }
-        });
-        video._obsEventCleanups = [];
-      }
-
-      if (video._obsStartupTimer) {
-        window.clearTimeout(video._obsStartupTimer);
-        video._obsStartupTimer = null;
-      }
-
-      if (video._hls && typeof video._hls.destroy === "function") {
-        video._hls.destroy();
-        video._hls = null;
-      }
-
-      try {
-        video.pause();
-      } catch (error) {
-        // Ignore media pause issues during teardown.
-      }
-
-      video.removeAttribute("src");
-      try {
-        video.load();
-      } catch (error) {
-        // Ignore media reset issues during teardown.
-      }
-      if (video._obsPlayerStarted) {
-        logObsFeed("info", "OBS player destroyed.");
-      }
-      video._obsPlayerStarted = false;
-    }
-
-    function initializeNavigationHlsPlayer(video, hlsUrl, statusNode, options = {}) {
-      if (!video || !hlsUrl || !video.isConnected || video._obsPlayerStarted) {
-        return;
-      }
-
-      const managedRetry = Boolean(options.managedRetry);
-      const shell = video.closest(".navigation-feed-shell");
-      let failureReported = false;
-      let readyReported = false;
-      video._obsPlayerStarted = true;
-      video._obsEventCleanups = [];
-
-      const addVideoListener = (type, handler) => {
-        video.addEventListener(type, handler);
-        video._obsEventCleanups.push(() => video.removeEventListener(type, handler));
-      };
-
-      const setShellState = (state, message) => {
-        if (shell) {
-          shell.classList.toggle("is-loading", state === "loading");
-          shell.classList.toggle("is-unavailable", state === "unavailable");
-        }
-        if (message) {
-          setNavigationStreamStatus(statusNode, message);
-        } else {
-          setOptionalStatus(statusNode, "", false);
-        }
-      };
-
-      const markReady = () => {
-        if (readyReported) {
-          return;
-        }
-        readyReported = true;
-        failureReported = false;
-        setShellState("ready", "");
-        if (managedRetry) {
-          resetObsFeedFailureCycle();
-        }
-        if (typeof options.onReady === "function") {
-          options.onReady();
-        }
-      };
-
-      const reportFailure = message => {
-        if (!failureReported) {
-          setShellState("unavailable", message);
-          failureReported = true;
-          if (typeof options.onFailure === "function") {
-            options.onFailure(message);
-          }
-        }
-        if (managedRetry) {
-          scheduleObsFeedRetry(statusNode, message);
-        }
-      };
-
-      setShellState("loading", "Connecting to OBS feed.");
-
-      addVideoListener("playing", () => {
-        markReady();
-      });
-
-      addVideoListener("error", () => {
-        reportFailure("The OBS feed is unavailable right now.");
-        if (managedRetry) {
-          video.removeAttribute("src");
-          try {
-            video.load();
-          } catch (error) {
-            // Ignore media reset issues; the retry path rebuilds the player.
-          }
-        }
-      });
-
-      const startPlayback = () => {
-        video.play().catch(() => {
-          reportFailure("OBS feed could not start automatically.");
-        });
-      };
-
-      if (video.canPlayType("application/vnd.apple.mpegurl")) {
-        video.src = hlsUrl;
-        video.load();
-        startPlayback();
-        return;
-      }
-
-      if (window.Hls && window.Hls.isSupported()) {
-        const hls = new window.Hls({
-          enableWorker: true,
-          lowLatencyMode: true,
-          backBufferLength: 30,
-          manifestLoadingMaxRetry: 1,
-          manifestLoadingRetryDelay: 1000,
-          manifestLoadingMaxRetryTimeout: 4000,
-          levelLoadingMaxRetry: 1,
-          levelLoadingRetryDelay: 1000,
-          levelLoadingMaxRetryTimeout: 4000,
-          fragLoadingMaxRetry: 1,
-          fragLoadingRetryDelay: 1000,
-          fragLoadingMaxRetryTimeout: 4000
-        });
-
-        video._hls = hls;
-        hls.attachMedia(video);
-        const onMediaAttached = () => {
-          if (!video.isConnected || (managedRetry && !isObsFeedEnabled(getIdleScreensaverSettings()))) {
-            return;
-          }
-          hls.loadSource(hlsUrl);
-        };
-        const onManifestParsed = () => {
-          markReady();
-          startPlayback();
-        };
-        const onHlsError = (_event, data) => {
-          if (data && data.fatal) {
-            const detail = data.details || data.type || "unknown error";
-            reportFailure(`OBS feed is unavailable (${detail}).`);
-            cleanupNavigationVideo(video);
-          }
-        };
-        hls.on(window.Hls.Events.MEDIA_ATTACHED, onMediaAttached);
-        hls.on(window.Hls.Events.MANIFEST_PARSED, onManifestParsed);
-        hls.on(window.Hls.Events.ERROR, onHlsError);
-        video._obsEventCleanups.push(() => {
-          hls.off(window.Hls.Events.MEDIA_ATTACHED, onMediaAttached);
-          hls.off(window.Hls.Events.MANIFEST_PARSED, onManifestParsed);
-          hls.off(window.Hls.Events.ERROR, onHlsError);
-        });
-        return;
-      }
-
-      reportFailure("This browser cannot play the HLS plotter stream.");
-    }
-
-    function buildNavigationHlsPlayer(hlsUrl, options = {}) {
-      const video = el("video", {
-        class: "stream-frame",
-        autoplay: "true",
-        muted: "true",
-        playsinline: "true",
-        preload: "auto",
-        crossorigin: "anonymous",
-        controlslist: "nodownload nofullscreen noremoteplayback",
-        disablepictureinpicture: "true",
-        disableremoteplayback: "true",
-        tabindex: "-1"
-      });
-      const status = el("p", { class: "footer-note navigation-feed-status", hidden: "hidden" });
-
-      video.muted = true;
-      video.autoplay = true;
-      video.playsInline = true;
-      video.controls = false;
-      video.disablePictureInPicture = true;
-      video.disableRemotePlayback = true;
-      video.removeAttribute("controls");
-
-      video._obsStartupTimer = window.setTimeout(() => {
-        video._obsStartupTimer = null;
-        if (!video.isConnected) {
-          return;
-        }
-        initializeNavigationHlsPlayer(video, hlsUrl, status, options);
-      }, 0);
-
-      const shell = wrapNavigationFeed(video, status, options.attributes || {});
-      shell.classList.add("is-loading");
-      setNavigationStreamStatus(status, "Connecting to OBS feed.");
-      logObsFeed("info", "OBS player created.", options.context || "navigation");
-      return shell;
-    }
-
-    function buildNavigationMedia(data, options = {}) {
-      if (!isObsFeedEnabled(getIdleScreensaverSettings())) {
-        return null;
-      }
-
-      const hlsUrl = resolveNavigationHlsUrl(data);
-      const legacyStreamUrl = (data.stream_url || "").trim();
-      const browserUrl = isBrowserEmbeddableUrl(legacyStreamUrl) && !isHlsPlaylistUrl(legacyStreamUrl)
-        ? legacyStreamUrl
-        : "";
-      const attributes = options.attributes || {};
-
-      if (hlsUrl) {
-        return buildNavigationHlsPlayer(hlsUrl, {
-          ...options,
-          attributes
-        });
-      }
-
-      if (browserUrl) {
-        const status = el("p", { class: "footer-note navigation-feed-status", hidden: "hidden" });
-        const frame = el("iframe", {
-          class: "stream-frame",
-          src: browserUrl,
-          allowfullscreen: "true",
-          loading: "lazy"
-        });
-        frame.addEventListener("load", () => {
-          const shell = frame.closest(".navigation-feed-shell");
-          if (shell) {
-            shell.classList.remove("is-loading", "is-unavailable");
-          }
-          setOptionalStatus(status, "", false);
-          if (typeof options.onReady === "function") {
-            options.onReady();
-          }
-        }, { once: true });
-        frame.addEventListener("error", () => {
-          const message = "OBS iframe feed is unavailable.";
-          const shell = frame.closest(".navigation-feed-shell");
-          if (shell) {
-            shell.classList.remove("is-loading");
-            shell.classList.add("is-unavailable");
-          }
-          setNavigationStreamStatus(status, message);
-          if (typeof options.onFailure === "function") {
-            options.onFailure(message);
-          }
-          if (options.managedRetry) {
-            scheduleObsFeedRetry(status, message);
-          }
-        }, { once: true });
-        logObsFeed("info", "OBS player created.", options.context || "navigation");
-        const shell = wrapNavigationFeed(frame, status, attributes);
-        shell.classList.add("is-loading");
-        setNavigationStreamStatus(status, "Connecting to OBS feed.");
-        return shell;
-      }
-
-      return wrapNavigationFeed(el("div", { class: "empty-stream" }, [
-        el("div", {}, [
-          el("strong", {}, ["No browser-ready bridge feed is configured yet."]),
-          el("p", { class: "muted" }, ["Set the HLS playlist URL in the OBS Feed settings."])
-        ])
-      ]), null, attributes);
-    }
-
-    function getObsFeedConfigSignature(data = navigationData || {}) {
-      const source = data && typeof data === "object" ? data : {};
-      return JSON.stringify({
-        hls_url: typeof source.hls_url === "string" ? source.hls_url.trim() : "",
-        stream_url: typeof source.stream_url === "string" ? source.stream_url.trim() : "",
-        stream_key: typeof source.stream_key === "string" ? source.stream_key.trim() : ""
-      });
-    }
-
-    function removeNavigationObsFeed() {
-      const existing = document.getElementById("navigationObsFeed");
-      if (!existing) {
-        return;
-      }
-      if (typeof existing._navigationFeedCleanup === "function") {
-        existing._navigationFeedCleanup();
-      }
-      destroyEmbeddedMedia(existing);
-      existing.remove();
-    }
-
-    function stopObsFeed() {
-      const hadNavigationFeed = Boolean(document.getElementById("navigationObsFeed"));
-      const hadRetry = Boolean(obsFeedState.retryTimer);
-      const hadIdleFeed = Boolean(idleState.showingObsFeed);
-      if (hadNavigationFeed || hadRetry || hadIdleFeed) {
-        logObsFeed("info", "OBS stop requested.");
-      }
-      obsFeedState.startToken += 1;
-      resetObsFeedFailureCycle();
-      obsFeedState.lastConfigSignature = "";
-      removeNavigationObsFeed();
-      if (idleState.showingObsFeed) {
-        clearIdleObsFeedTimers();
-        deactivateIdleObsFeed();
-      }
-    }
-
-    function startObsFeed(options = {}) {
-      const settings = getIdleScreensaverSettings();
-      if (!isObsFeedEnabled(settings)) {
-        stopObsFeed();
-        return null;
-      }
-
-      const mapCard = document.getElementById("navigationMap")
-        ? document.getElementById("navigationMap").closest(".navigation-map-card")
-        : null;
-      if (!mapCard || !mapCard.parentNode) {
-        return null;
-      }
-
-      const signature = getObsFeedConfigSignature(navigationData || {});
-      const existing = document.getElementById("navigationObsFeed");
-      if (existing && !options.forceReload && obsFeedState.lastConfigSignature === signature) {
-        return existing;
-      }
-
-      logObsFeed("info", "OBS start requested.", options.forceReload ? "force reload" : "normal");
-      obsFeedState.startToken += 1;
-      if (options.resetFailureCycle) {
-        resetObsFeedFailureCycle();
-      } else {
-        clearObsFeedRetryTimer();
-      }
-      removeNavigationObsFeed();
-      obsFeedState.lastConfigSignature = signature;
-
-      const feed = buildNavigationMedia(navigationData || {}, {
-        managedRetry: true,
-        context: "navigation",
-        attributes: {
-          id: "navigationObsFeed",
-          "data-obs-feed": "navigation"
-        }
-      });
-      if (!feed) {
-        return null;
-      }
-      mapCard.parentNode.insertBefore(feed, mapCard.nextSibling);
-      return feed;
     }
 
     function buildNavigationMapShell() {
@@ -1850,10 +1220,7 @@
       ]);
     }
 
-    function renderNavigationTab(data) {
-      const notes = Array.isArray(data && data.notes)
-        ? data.notes.filter(note => note && (String(note.title || "").trim() || String(note.body || "").trim()))
-        : [];
+    function renderNavigationTab() {
       const telemetrySettings = getIdleScreensaverSettings();
       const panel = el("section", { class: "tab-panel active", id: "panel-navigation" });
       const hero = el("div", { class: "hero-card" }, [
@@ -1868,19 +1235,6 @@
       ]);
 
       panel.appendChild(hero);
-      if (notes.length) {
-        panel.appendChild(el("div", { class: "grid" }, [
-          el("div", { class: "card brand-watermark span-12" }, [
-            el("div", { class: "section-kicker" }, ["Bridge Notes"]),
-            makeList(notes, note =>
-              el("li", { class: "list-item" }, [
-                el("strong", {}, [note.title || "Note"]),
-                el("div", { class: "muted" }, [note.body || ""])
-              ])
-            )
-          ])
-        ]));
-      }
       return panel;
     }
 
@@ -2324,17 +1678,7 @@
     }
 
     function getNavigationMapCoordinates() {
-      const liveCoords = getLiveWeatherCoords();
-      if (liveCoords) {
-        return liveCoords;
-      }
-
-      const configuredCoords = getConfiguredWeatherCoords();
-      if (configuredCoords) {
-        return configuredCoords;
-      }
-
-      return null;
+      return getLiveWeatherCoords();
     }
 
     function getNavigationMapHeading() {
@@ -3275,7 +2619,7 @@
       if (!coordinates) {
         setNavigationMapPlaceholder(
           "Awaiting map position",
-          "The moving map will activate as soon as live NMEA coordinates arrive or fallback latitude and longitude are added to the navigation settings."
+          "The moving map will activate as soon as live NMEA coordinates arrive."
         );
         setNavigationMapStatus("Map is waiting for a usable vessel position.");
         return;
@@ -3314,9 +2658,7 @@
       const trackNote = trackPointCount
         ? `Shared onboard track shows ${trackPointCount} logged point${trackPointCount === 1 ? "" : "s"} for this charter and retains data for the charter plus ${retentionDays} extra day${retentionDays === 1 ? "" : "s"}.`
         : "Shared onboard track history will appear here as live NMEA positions are recorded.";
-      const sourceNote = hasLivePosition
-        ? "Live NMEA position active."
-        : "Using configured fallback coordinates.";
+      const sourceNote = "Live NMEA position active.";
       setNavigationMapStatus(`${updatedAt}${sourceNote} ${trackNote} Viewed satellite tiles remain available offline after they have been loaded once. ${followNote}`);
     }
 
@@ -3699,22 +3041,6 @@
         99: "Severe thunderstorm and hail"
       }[code];
       return label || "Conditions unavailable";
-    }
-
-    function getConfiguredWeatherCoords() {
-      const latitude = Number(navigationData && navigationData.latitude);
-      const longitude = Number(navigationData && navigationData.longitude);
-
-      if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) {
-        return null;
-      }
-
-      return {
-        latitude,
-        longitude,
-        label: (navigationData && navigationData.location_label) || "Configured vessel position",
-        source: "Configured coordinates"
-      };
     }
 
     async function fetchWithTimeout(url, timeoutMs) {
@@ -4739,59 +4065,6 @@
       };
     }
 
-    function normalizeObsRatioValue(value) {
-      if (Array.isArray(value) && value.length >= 2) {
-        const width = Number(value[0]);
-        const height = Number(value[1]);
-        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-          const normalizedWidth = Number.isInteger(width) ? String(width) : String(Number(width.toFixed(4)));
-          const normalizedHeight = Number.isInteger(height) ? String(height) : String(Number(height.toFixed(4)));
-          return {
-            raw: `${normalizedWidth}:${normalizedHeight}`,
-            css: `${width} / ${height}`,
-            number: width / height
-          };
-        }
-      }
-
-      const text = String(value === undefined || value === null ? "" : value).trim();
-      if (!text) {
-        return { ...IDLE_OBS_RATIO_DEFAULT };
-      }
-
-      const pairMatch = text.match(/^(\d+(?:\.\d+)?)\s*[:/x]\s*(\d+(?:\.\d+)?)$/i);
-      if (pairMatch) {
-        const width = Number(pairMatch[1]);
-        const height = Number(pairMatch[2]);
-        if (Number.isFinite(width) && Number.isFinite(height) && width > 0 && height > 0) {
-          const normalizedWidth = Number.isInteger(width) ? String(width) : String(Number(width.toFixed(4)));
-          const normalizedHeight = Number.isInteger(height) ? String(height) : String(Number(height.toFixed(4)));
-          return {
-            raw: `${normalizedWidth}:${normalizedHeight}`,
-            css: `${width} / ${height}`,
-            number: width / height
-          };
-        }
-      }
-
-      const numeric = Number(text);
-      if (Number.isFinite(numeric) && numeric > 0) {
-        return {
-          raw: text,
-          css: String(numeric),
-          number: numeric
-        };
-      }
-
-      return { ...IDLE_OBS_RATIO_DEFAULT };
-    }
-
-    function isObsFeedEnabled(settings) {
-      const source = settings && typeof settings === "object" ? settings : {};
-      const rawObsFeedEnabled = source.obsFeedEnabled !== undefined ? source.obsFeedEnabled : source.obs_feed_enabled;
-      return rawObsFeedEnabled !== false;
-    }
-
     function getActiveIdleZoomLevel(settings = getIdleScreensaverSettings()) {
       const levels = settings && Array.isArray(settings.zoom_levels) && settings.zoom_levels.length
         ? settings.zoom_levels
@@ -4831,10 +4104,6 @@
               : {})));
       const timeoutSeconds = Number(raw.timeout_seconds);
       const zoomCycleSeconds = Number(raw.zoom_cycle_seconds);
-      const obsFeedIntervalSeconds = Number(raw.obs_feed_interval_seconds);
-      const obsFeedDurationSeconds = Number(raw.obs_feed_duration_seconds);
-      const obsFeedTransitionSeconds = Number(raw.obs_feed_transition_seconds);
-      const obsRatio = normalizeObsRatioValue(raw.obs_ratio !== undefined ? raw.obs_ratio : raw.OBS_Ratio);
       const rawZoomLevels = Array.isArray(raw.zoom_levels)
         ? raw.zoom_levels
         : (Array.isArray(raw.map_zoom) ? raw.map_zoom : [raw.zoom_levels, raw.map_zoom]);
@@ -4854,392 +4123,11 @@
         zoom_cycle_seconds: Number.isFinite(zoomCycleSeconds) && zoomCycleSeconds >= 5
           ? Math.round(zoomCycleSeconds)
           : IDLE_SCREENSAVER_DEFAULTS.zoom_cycle_seconds,
-        obsFeedEnabled: isObsFeedEnabled(raw),
-        obs_feed_interval_seconds: Number.isFinite(obsFeedIntervalSeconds) && obsFeedIntervalSeconds >= 0
-          ? Math.round(obsFeedIntervalSeconds)
-          : IDLE_SCREENSAVER_DEFAULTS.obs_feed_interval_seconds,
-        obs_feed_duration_seconds: Number.isFinite(obsFeedDurationSeconds) && obsFeedDurationSeconds >= 0
-          ? Math.round(obsFeedDurationSeconds)
-          : IDLE_SCREENSAVER_DEFAULTS.obs_feed_duration_seconds,
-        obs_feed_transition_seconds: Number.isFinite(obsFeedTransitionSeconds) && obsFeedTransitionSeconds >= 0
-          ? obsFeedTransitionSeconds
-          : IDLE_SCREENSAVER_DEFAULTS.obs_feed_transition_seconds,
-        obs_ratio: obsRatio.raw,
-        obs_ratio_css: obsRatio.css,
-        obs_ratio_number: obsRatio.number,
         show_weather: raw.show_weather === undefined ? IDLE_SCREENSAVER_DEFAULTS.show_weather : !!raw.show_weather,
         show_itinerary: raw.show_itinerary === undefined ? IDLE_SCREENSAVER_DEFAULTS.show_itinerary : !!raw.show_itinerary,
         show_telemetry: raw.show_telemetry === undefined ? IDLE_SCREENSAVER_DEFAULTS.show_telemetry : !!raw.show_telemetry,
         telemetry_items: telemetryItems
       };
-    }
-
-    function supportsIdleObsFeedLayout() {
-      try {
-        return !window.CSS
-          || typeof window.CSS.supports !== "function"
-          || window.CSS.supports("aspect-ratio: 16 / 9");
-      } catch (error) {
-        return true;
-      }
-    }
-
-    function canShowIdleObsFeed() {
-      const settings = getIdleScreensaverSettings();
-      if (!isObsFeedEnabled(settings)) {
-        return false;
-      }
-
-      if (!supportsIdleObsFeedLayout()) {
-        return false;
-      }
-
-      const data = navigationData || {};
-      const hlsUrl = resolveNavigationHlsUrl(data);
-      if (hlsUrl) {
-        const probe = document.createElement("video");
-        return !!(
-          probe.canPlayType("application/vnd.apple.mpegurl")
-          || (window.Hls && typeof window.Hls.isSupported === "function" && window.Hls.isSupported())
-        );
-      }
-
-      const legacyStreamUrl = (data.stream_url || "").trim();
-      return isBrowserEmbeddableUrl(legacyStreamUrl);
-    }
-
-    function clearIdleObsFeedTimers() {
-      if (idleObsFeedTimer) {
-        window.clearTimeout(idleObsFeedTimer);
-        idleObsFeedTimer = null;
-      }
-
-      if (idleObsFeedDurationTimer) {
-        window.clearTimeout(idleObsFeedDurationTimer);
-        idleObsFeedDurationTimer = null;
-      }
-
-      if (idleObsFeedReadyTimer) {
-        window.clearTimeout(idleObsFeedReadyTimer);
-        idleObsFeedReadyTimer = null;
-      }
-    }
-
-    function clearIdleTransitionTimers() {
-      if (idleTransitionTimer) {
-        window.clearTimeout(idleTransitionTimer);
-        idleTransitionTimer = null;
-      }
-
-      if (idleTransitionMidpointTimer) {
-        window.clearTimeout(idleTransitionMidpointTimer);
-        idleTransitionMidpointTimer = null;
-      }
-    }
-
-    function finishIdlePhaseTransition() {
-      clearIdleTransitionTimers();
-      idleState.transitioning = false;
-
-      const overlay = document.getElementById("idleTransition");
-      if (overlay) {
-        overlay.classList.remove("active");
-        overlay.setAttribute("aria-hidden", "true");
-      }
-    }
-
-    function runIdlePhaseTransition(onSwap, onComplete) {
-      const settings = getIdleScreensaverSettings();
-      const durationMs = Math.max(0, Math.round(settings.obs_feed_transition_seconds * 1000));
-      const overlay = document.getElementById("idleTransition");
-
-      if (!overlay || durationMs <= 0) {
-        if (typeof onSwap === "function") {
-          onSwap();
-        }
-        if (typeof onComplete === "function") {
-          onComplete();
-        }
-        return;
-      }
-
-      clearIdleTransitionTimers();
-      idleState.transitioning = true;
-      overlay.style.setProperty("--idle-obs-transition-ms", `${durationMs}ms`);
-      overlay.classList.remove("active");
-      overlay.setAttribute("aria-hidden", "false");
-      void overlay.offsetWidth;
-      overlay.classList.add("active");
-
-      idleTransitionMidpointTimer = window.setTimeout(() => {
-        if (typeof onSwap === "function") {
-          onSwap();
-        }
-      }, Math.round(durationMs / 2));
-
-      idleTransitionTimer = window.setTimeout(() => {
-        finishIdlePhaseTransition();
-        if (typeof onComplete === "function") {
-          onComplete();
-        }
-      }, durationMs);
-    }
-
-    function destroyEmbeddedMedia(root) {
-      if (!root) {
-        return;
-      }
-
-      const cleanupShell = shell => {
-        if (shell && typeof shell._navigationFeedCleanup === "function") {
-          shell._navigationFeedCleanup();
-        }
-      };
-      cleanupShell(root);
-      root.querySelectorAll(".navigation-feed-shell").forEach(cleanupShell);
-
-      root.querySelectorAll("video").forEach(video => {
-        cleanupNavigationVideo(video);
-      });
-
-      root.querySelectorAll("iframe").forEach(frame => {
-        if (frame.src && frame.src !== "about:blank") {
-          logObsFeed("info", "OBS player destroyed.");
-        }
-        frame.src = "about:blank";
-      });
-
-      replaceNodeChildren(root);
-    }
-
-    function ensureIdleObsFeedRendered(options = {}) {
-      const body = document.getElementById("idleObsFeedBody");
-      if (!body) {
-        return null;
-      }
-
-      if (!isObsFeedEnabled(getIdleScreensaverSettings())) {
-        destroyEmbeddedMedia(body);
-        return null;
-      }
-
-      if (body.childNodes.length && !options.forceReload) {
-        return body.firstElementChild;
-      }
-
-      destroyEmbeddedMedia(body);
-      const card = el("div", { class: "idle-obs-feed__card" });
-      const media = el("div", { class: "idle-obs-feed__media" });
-      const feed = buildNavigationMedia(navigationData || {}, {
-        ...options,
-        context: "idle",
-        managedRetry: false
-      });
-      if (!feed) {
-        return null;
-      }
-      media.appendChild(feed);
-      card.appendChild(media);
-      body.appendChild(card);
-      return card;
-    }
-
-    function deactivateIdleObsFeed() {
-      const dashboard = document.getElementById("idleDashboard");
-      const feed = document.getElementById("idleObsFeed");
-      const body = document.getElementById("idleObsFeedBody");
-
-      idleState.showingObsFeed = false;
-      idleState.obsFeedReady = false;
-
-      if (dashboard) {
-        dashboard.classList.remove("obs-feed-active");
-      }
-      if (feed) {
-        feed.setAttribute("aria-hidden", "true");
-      }
-      if (body) {
-        destroyEmbeddedMedia(body);
-      }
-    }
-
-    function hideIdleObsFeed(options = {}) {
-      const { resumeCycle = false, useTransition = false } = options;
-
-      clearIdleObsFeedTimers();
-      if (useTransition && idleState.active && idleState.showingObsFeed && !idleState.transitioning) {
-        clearIdleZoomTimer();
-        runIdlePhaseTransition(() => {
-          deactivateIdleObsFeed();
-        }, () => {
-          if (resumeCycle && idleState.active) {
-            scheduleIdleZoomCycle();
-            scheduleIdleObsFeedCycle();
-          }
-        });
-        return;
-      }
-
-      finishIdlePhaseTransition();
-      deactivateIdleObsFeed();
-
-      if (resumeCycle && idleState.active) {
-        scheduleIdleZoomCycle();
-        scheduleIdleObsFeedCycle();
-      }
-    }
-
-    function showIdleObsFeed() {
-      if (!isTabletOrLarger()) {
-        return;
-      }
-
-      if (!idleState.active || idleState.showingObsFeed || idleState.transitioning) {
-        return;
-      }
-
-      const settings = getIdleScreensaverSettings();
-      clearIdleObsFeedTimers();
-
-      if (!isObsFeedEnabled(settings)) {
-        logIdleObsDecision("Idle OBS skipped.", "disabled");
-        return;
-      }
-
-      if (settings.obs_feed_duration_seconds <= 0) {
-        logIdleObsDecision("Idle OBS skipped.", "duration disabled");
-        return;
-      }
-
-      if (!canShowIdleObsFeed()) {
-        logIdleObsDecision("Idle OBS skipped.", "no playable feed");
-        return;
-      }
-
-      const feed = document.getElementById("idleObsFeed");
-      const dashboard = document.getElementById("idleDashboard");
-      if (!feed || !dashboard) {
-        return;
-      }
-
-      let failedBeforeReady = false;
-      const failIdleObsFeed = reason => {
-        if (!idleState.active || failedBeforeReady) {
-          return;
-        }
-        failedBeforeReady = true;
-        logIdleObsDecision("Idle OBS skipped.", reason || "player unavailable");
-        hideIdleObsFeed({ resumeCycle: true, useTransition: false });
-      };
-
-      clearIdleZoomTimer();
-      runIdlePhaseTransition(() => {
-        if (!idleState.active) {
-          return;
-        }
-
-        const rendered = ensureIdleObsFeedRendered({
-          forceReload: true,
-          onReady: () => {
-            if (!idleState.active || !idleState.showingObsFeed || failedBeforeReady) {
-              return;
-            }
-            idleState.obsFeedReady = true;
-            if (idleObsFeedReadyTimer) {
-              window.clearTimeout(idleObsFeedReadyTimer);
-              idleObsFeedReadyTimer = null;
-            }
-            idleObsFeedDurationTimer = window.setTimeout(() => {
-              hideIdleObsFeed({ resumeCycle: true, useTransition: true });
-            }, settings.obs_feed_duration_seconds * 1000);
-          },
-          onFailure: reason => failIdleObsFeed(reason)
-        });
-        if (!rendered) {
-          failIdleObsFeed("render failed");
-          return;
-        }
-        idleObsFeedReadyTimer = window.setTimeout(() => {
-          failIdleObsFeed("player did not become ready");
-        }, OBS_IDLE_READY_TIMEOUT_MS);
-        dashboard.classList.add("obs-feed-active");
-        feed.setAttribute("aria-hidden", "false");
-        idleState.showingObsFeed = true;
-        idleState.obsFeedReady = false;
-        logIdleObsDecision("Idle OBS entering.", "player mounted");
-      }, () => {
-        if (!idleState.active || !idleState.showingObsFeed || failedBeforeReady) {
-          return;
-        }
-      });
-    }
-
-    function scheduleIdleObsFeedCycle() {
-      clearIdleObsFeedTimers();
-
-      if (!isTabletOrLarger()) {
-        return;
-      }
-
-      if (!idleState.active || idleState.showingObsFeed || idleState.transitioning) {
-        return;
-      }
-
-      const settings = getIdleScreensaverSettings();
-      if (!isObsFeedEnabled(settings)) {
-        logIdleObsDecision("Idle OBS skipped.", "disabled");
-        return;
-      }
-
-      if (settings.obs_feed_interval_seconds <= 0) {
-        logIdleObsDecision("Idle OBS skipped.", "interval disabled");
-        return;
-      }
-
-      if (!canShowIdleObsFeed()) {
-        logIdleObsDecision("Idle OBS skipped.", "no playable feed");
-        return;
-      }
-
-      idleObsFeedTimer = window.setTimeout(() => {
-        idleObsFeedTimer = null;
-        showIdleObsFeed();
-      }, settings.obs_feed_interval_seconds * 1000);
-    }
-
-    function resumeIdleVisualCycle() {
-      if (!isTabletOrLarger()) {
-        return;
-      }
-
-      if (!idleState.active) {
-        return;
-      }
-
-      if (idleState.transitioning) {
-        return;
-      }
-
-      if (idleState.showingObsFeed) {
-        const settings = getIdleScreensaverSettings();
-        if (!idleState.obsFeedReady) {
-          return;
-        }
-        clearIdleObsFeedTimers();
-
-        if (!isObsFeedEnabled(settings) || settings.obs_feed_duration_seconds <= 0) {
-          hideIdleObsFeed({ resumeCycle: true });
-          return;
-        }
-
-        idleObsFeedDurationTimer = window.setTimeout(() => {
-          hideIdleObsFeed({ resumeCycle: true });
-        }, settings.obs_feed_duration_seconds * 1000);
-        return;
-      }
-
-      scheduleIdleZoomCycle();
-      scheduleIdleObsFeedCycle();
     }
 
     function clearIdleZoomTimer() {
@@ -5256,7 +4144,7 @@
         return;
       }
 
-      if (!idleState.active || idleState.showingObsFeed || idleState.transitioning) {
+      if (!idleState.active) {
         return;
       }
 
@@ -5267,8 +4155,7 @@
 
       idleZoomTimer = window.setTimeout(() => {
         idleZoomTimer = null;
-        if (!idleState.active || idleState.showingObsFeed || idleState.transitioning) {
-          scheduleIdleZoomCycle();
+        if (!idleState.active) {
           return;
         }
         idleState.zoomIndex = (idleState.zoomIndex + 1) % settings.zoom_levels.length;
@@ -5279,38 +4166,17 @@
 
     function syncIdleSettings() {
       const settings = getIdleScreensaverSettings();
-      const idleObsFeedBody = document.getElementById("idleObsFeedBody");
       idleState.enabled = settings.enabled;
       idleState.timeoutMs = settings.timeout_seconds * 1000;
-      const obsEnabled = isObsFeedEnabled(settings);
-
-      if (obsFeedState.lastLoadedEnabled !== obsEnabled) {
-        logObsFeed("info", `OBS enabled setting loaded: ${obsEnabled ? "enabled" : "disabled"}.`);
-        obsFeedState.lastLoadedEnabled = obsEnabled;
-      }
 
       if (!isTabletOrLarger()) {
         exitIdleForMobile();
         return settings;
       }
 
-      if (idleObsFeedBody) {
-        idleObsFeedBody.style.setProperty("--idle-obs-aspect-ratio", settings.obs_ratio_css);
-        idleObsFeedBody.style.setProperty("--idle-obs-aspect-ratio-number", String(settings.obs_ratio_number));
-      }
-
-      if (!obsEnabled) {
-        clearIdleObsFeedTimers();
-        finishIdlePhaseTransition();
-        deactivateIdleObsFeed();
-      }
-
       if (!settings.enabled) {
         clearIdleTimer();
         clearIdleZoomTimer();
-        clearIdleObsFeedTimers();
-        finishIdlePhaseTransition();
-        hideIdleObsFeed();
         exitIdleMode({ resetTimer: false });
       }
 
@@ -5375,18 +4241,13 @@
 
       idleState.active = true;
       idleState.zoomIndex = 0;
-      idleState.showingObsFeed = false;
-      idleState.obsFeedReady = false;
-      idleState.transitioning = false;
       clearIdleTimer();
-      clearIdleObsFeedTimers();
-      finishIdlePhaseTransition();
       dashboard.classList.add("active");
       dashboard.setAttribute("aria-hidden", "false");
       document.body.classList.add("idle-active");
       syncSiteFooterVisibility();
       syncIdleDashboard();
-      resumeIdleVisualCycle();
+      scheduleIdleZoomCycle();
 
       window.requestAnimationFrame(() => {
         invalidateIdleMapSize();
@@ -5402,10 +4263,7 @@
       const { resetTimer = true } = options;
       const dashboard = document.getElementById("idleDashboard");
 
-      clearIdleObsFeedTimers();
       clearIdleZoomTimer();
-      finishIdlePhaseTransition();
-      hideIdleObsFeed();
 
       if (dashboard) {
         dashboard.classList.remove("active");
@@ -5422,8 +4280,6 @@
       }
 
       idleState.active = false;
-      idleState.showingObsFeed = false;
-      idleState.obsFeedReady = false;
 
       if (currentTabId === "navigation") {
         window.requestAnimationFrame(() => {
@@ -5441,9 +4297,6 @@
       clearIdleTimer();
       clearIdleClockTimer();
       clearIdleZoomTimer();
-      clearIdleObsFeedTimers();
-      finishIdlePhaseTransition();
-      deactivateIdleObsFeed();
       exitIdleMode({ resetTimer: false });
     }
 
@@ -5498,8 +4351,6 @@
         if (document.hidden) {
           clearIdleTimer();
           clearIdleZoomTimer();
-          clearIdleObsFeedTimers();
-          finishIdlePhaseTransition();
           return;
         }
 
@@ -5509,7 +4360,7 @@
             invalidateIdleMapSize();
             syncIdleMap(true);
           });
-          resumeIdleVisualCycle();
+          scheduleIdleZoomCycle();
           return;
         }
 
@@ -5850,8 +4701,6 @@
       if (activeZoomLevel && activeZoomLevel.center_on_vessel) {
         if (hasLivePosition) {
           mapDetails.push("Centered on live vessel coordinates.");
-        } else if (vesselCoordinates) {
-          mapDetails.push("Centered on configured fallback vessel coordinates.");
         } else {
           mapDetails.push("The passive display will center on the vessel as soon as a usable position is available.");
         }
@@ -5883,7 +4732,7 @@
       }
       if (mapLabel) {
         mapLabel.textContent = activeZoomLevel && activeZoomLevel.center_on_vessel
-          ? (hasLivePosition ? "Live vessel position" : (vesselCoordinates ? "Configured vessel position" : "Idle dashboard"))
+          ? (hasLivePosition ? "Live vessel position" : "Idle dashboard")
           : "Configured idle focus";
       }
       if (mapTitle) {
@@ -5951,7 +4800,7 @@
       }
       if (mapLabel) {
         mapLabel.textContent = activeZoomLevel && activeZoomLevel.center_on_vessel
-          ? (hasLivePosition ? "Live vessel position" : (vesselCoordinates ? "Configured vessel position" : "Idle dashboard"))
+          ? (hasLivePosition ? "Live vessel position" : "Idle dashboard")
           : "Configured idle focus";
       }
       if (mapTitle) {
@@ -7929,13 +6778,11 @@
     function applySavedCharterBundle(charterBundle) {
       const charterData = charterBundle && typeof charterBundle === "object" ? charterBundle : {};
       const settings = charterData.settings && typeof charterData.settings === "object" ? charterData.settings : DEFAULT_SETTINGS_DATA;
-      const navigation = charterData.navigation && typeof charterData.navigation === "object" ? charterData.navigation : DEFAULT_NAVIGATION_DATA;
       const itinerary = charterData.itinerary && typeof charterData.itinerary === "object" ? charterData.itinerary : {};
 
       siteData = settings;
       charterBundleData = charterData;
       charterSitesData = charterData.sites && typeof charterData.sites === "object" ? charterData.sites : { sites: [] };
-      navigationData = navigation;
       itineraryData = itinerary;
 
       const siteTitle = document.getElementById("siteTitle");
@@ -7950,53 +6797,11 @@
       return {
         charterData,
         settings,
-        navigation,
         itinerary,
         menus: charterData.menus && typeof charterData.menus === "object" ? charterData.menus : {},
         drinks: charterData.drinks && typeof charterData.drinks === "object" ? charterData.drinks : {},
         vessel: charterData.vessel && typeof charterData.vessel === "object" ? charterData.vessel : {}
       };
-    }
-
-    function syncObsFeedAfterSavedSettingsChange(previousEnabled, previousConfigSignature) {
-      const enabled = isObsFeedEnabled(getIdleScreensaverSettings());
-      const configSignature = getObsFeedConfigSignature(navigationData || {});
-      const becameEnabled = previousEnabled === false && enabled;
-      const becameDisabled = previousEnabled !== false && !enabled;
-      const configChanged = previousConfigSignature !== configSignature;
-
-      obsFeedState.lastEnabled = enabled;
-      if (obsFeedState.lastLoadedEnabled !== enabled) {
-        logObsFeed("info", `OBS enabled setting loaded: ${enabled ? "enabled" : "disabled"}.`);
-        obsFeedState.lastLoadedEnabled = enabled;
-      }
-
-      if (!enabled) {
-        stopObsFeed();
-        clearIdleObsFeedTimers();
-        finishIdlePhaseTransition();
-        deactivateIdleObsFeed();
-        resumeIdleVisualCycle();
-        return;
-      }
-
-      if (currentTabId === "navigation") {
-        startObsFeed({
-          forceReload: becameEnabled || configChanged,
-          resetFailureCycle: becameEnabled || configChanged
-        });
-      }
-
-      if (idleState.active && (becameEnabled || becameDisabled || configChanged)) {
-        deactivateIdleObsFeed();
-        if (becameEnabled) {
-          showIdleObsFeed();
-        } else {
-          resumeIdleVisualCycle();
-        }
-      } else if (idleState.active) {
-        resumeIdleVisualCycle();
-      }
     }
 
     async function refreshSavedCharterBundle(options = {}) {
@@ -8005,8 +6810,6 @@
       }
 
       charterRefreshPromise = (async () => {
-        const previousEnabled = isObsFeedEnabled(getIdleScreensaverSettings());
-        const previousConfigSignature = getObsFeedConfigSignature(navigationData || {});
         const bundle = await loadJSON(CHARTER_API_URL);
 
         applySavedCharterBundle(bundle);
@@ -8017,7 +6820,6 @@
         syncPlannedRouteLayers();
         syncNmeaUi();
         syncDynamicTabsAndPanels();
-        syncObsFeedAfterSavedSettingsChange(previousEnabled, previousConfigSignature);
         refreshPlannedRouteData().catch(() => {});
 
         return bundle;
@@ -8048,13 +6850,13 @@
 
     async function render() {
       const charterBundle = await loadCharterBundle();
-      const { charterData, navigation, itinerary, menus, vessel } = applySavedCharterBundle(charterBundle);
+      const { charterData, itinerary, menus, vessel } = applySavedCharterBundle(charterBundle);
 
       renderTabs();
 
       const content = document.getElementById("content");
       content.innerHTML = "";
-      content.appendChild(renderNavigationTab(navigation));
+      content.appendChild(renderNavigationTab());
       content.appendChild(renderItineraryTab(itinerary));
       content.appendChild(renderMenuTab(menus));
       content.appendChild(renderDrinksTab(charterData));
