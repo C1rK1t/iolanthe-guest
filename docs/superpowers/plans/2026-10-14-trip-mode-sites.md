@@ -1,5 +1,16 @@
 # Trip Mode: Guest and Crew Sites Implementation Plan
 
+> **Amended after the build (2026-10-14).** Two changes were made in the final fix wave (guest 5900f96, crew cf72c8a), to
+> match the binding ruling already applied to the server and the admin. The code blocks below now show the shipped
+> helper; the scanner blocks in Tasks 2 and 6 still show the first version.
+> 1. **The helper never throws.** An unknown key logs one `console.warn` per key and returns the key text (no vars);
+>    `applyStatic` keeps going past an unknown `data-w` key. A missing map or key still falls back to the built-in
+>    charter copy. The keys tests still fail on an unknown or unused key, so a typo is caught before release.
+> 2. **The scanner is stricter** (ported from iolanthe-admin `test/wording-scan.js`): it catches a word joined by a slash
+>    or hyphen ("Client/Agent", "Charter-specific"), attributes written `\s*=\s*` with double, single or no quotes, and
+>    `data-label` / `data-title`; a lowercase `word=` (a query parameter such as `charter=`) is exempt. The
+>    shipped `test/visible-words.js` in each repo is the reference.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Every visible commercial word in the guest site (`iolanthe-guest`) and the crew site (`iolanthe-crew`) is read from the server's wording map through a small per-site helper, so a vessel in `trip` mode shows "Trip" where Iolanthe (charter mode) shows "Charter", and charter mode looks exactly as it does today.
@@ -257,9 +268,29 @@ test("w: var values go in literally (no $-patterns, no second expansion)", () =>
   assert.equal(w("unit_day", { vars: { n: "$& {n}" } }), "CHARTER DAY $& {n}");
 });
 
-test("w: an unknown key is a bug and throws", () => {
+// Runs fn with console.warn stubbed; returns the warnings it collected.
+function collectWarnings(fn) {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = message => warnings.push(message);
+  try {
+    fn();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+}
+
+test("w: an unknown key warns once and returns the key text", () => {
   const { w } = createWording(BUILT_IN);
-  assert.throws(() => w("no_such_key"), /Unknown wording key/);
+  const warnings = collectWarnings(() => {
+    assert.equal(w("no_such_key"), "no_such_key");
+    assert.equal(w("no_such_key", { plural: true, vars: { n: 1 } }), "no_such_key");
+    assert.equal(w("other_missing_key"), "other_missing_key");
+  });
+  assert.equal(warnings.length, 2, "one warning per key, not per call");
+  assert.match(warnings[0], /no word "no_such_key"/);
+  assert.match(warnings[1], /no word "other_missing_key"/);
 });
 
 test("setWording: a non-object keeps the words already loaded; reset clears them", () => {
@@ -358,6 +389,7 @@ Expected: FAIL with `Cannot find module '../wording.js'`.
 
   function createWording(builtIn) {
     let loaded = null;
+    const warned = new Set();
 
     function entryFor(key) {
       const fromServer = loaded && Object.prototype.hasOwnProperty.call(loaded, key) ? loaded[key] : null;
@@ -367,13 +399,22 @@ Expected: FAIL with `Cannot find module '../wording.js'`.
       if (Object.prototype.hasOwnProperty.call(builtIn, key)) {
         return builtIn[key];
       }
-      throw new Error(`Unknown wording key: ${key}`);
+      return null;
     }
 
+    // Never throws: a key in neither the loaded words nor builtIn is a programming mistake (the keys test catches it),
+    // but one wrong key must not blank a page, so it warns once per key and returns the key text.
     // w("unit_day", { vars: { n: 3 } }) -> "TRIP DAY 3"; w("unit", { plural: true, lower: true }) -> "trips".
     function w(key, opts) {
       const options = opts || {};
       const entry = entryFor(key);
+      if (entry === null) {
+        if (!warned.has(key)) {
+          warned.add(key);
+          console.warn(`wording.js: no word "${key}"`);
+        }
+        return String(key);
+      }
       let text = entry[options.plural ? 1 : 0];
       if (options.lower) {
         text = lowerWords(text);
@@ -913,7 +954,7 @@ git commit -m "feat: load the wording helper in the guest page and feed it the s
 "use strict";
 
 // Every wording key used in the site's code must exist in the built-in charter copy, and every built-in key must be used
-// (no dead keys, no typos that would throw "Unknown wording key" on a tablet).
+// (no dead keys, no typos that would show a raw key on a tablet).
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
@@ -1193,9 +1234,29 @@ test("w: var values go in literally (no $-patterns, no second expansion)", () =>
   assert.equal(w("greet", { vars: { name: "$& {name}" } }), "Hello $& {name}");
 });
 
-test("w: an unknown key is a bug and throws", () => {
+// Runs fn with console.warn stubbed; returns the warnings it collected.
+function collectWarnings(fn) {
+  const warnings = [];
+  const original = console.warn;
+  console.warn = message => warnings.push(message);
+  try {
+    fn();
+  } finally {
+    console.warn = original;
+  }
+  return warnings;
+}
+
+test("w: an unknown key warns once and returns the key text", () => {
   const { w } = createWording(BUILT_IN);
-  assert.throws(() => w("no_such_key"), /Unknown wording key/);
+  const warnings = collectWarnings(() => {
+    assert.equal(w("no_such_key"), "no_such_key");
+    assert.equal(w("no_such_key", { plural: true, vars: { n: 1 } }), "no_such_key");
+    assert.equal(w("other_missing_key"), "other_missing_key");
+  });
+  assert.equal(warnings.length, 2, "one warning per key, not per call");
+  assert.match(warnings[0], /no word "no_such_key"/);
+  assert.match(warnings[1], /no word "other_missing_key"/);
 });
 
 test("setWording: a non-object keeps the words already loaded; reset clears them", () => {
@@ -1288,6 +1349,7 @@ Expected: FAIL with `Cannot find module '../wording.js'`.
 
   function createWording(builtIn) {
     let loaded = null;
+    const warned = new Set();
 
     function entryFor(key) {
       const fromServer = loaded && Object.prototype.hasOwnProperty.call(loaded, key) ? loaded[key] : null;
@@ -1297,13 +1359,22 @@ Expected: FAIL with `Cannot find module '../wording.js'`.
       if (Object.prototype.hasOwnProperty.call(builtIn, key)) {
         return builtIn[key];
       }
-      throw new Error(`Unknown wording key: ${key}`);
+      return null;
     }
 
+    // Never throws: a key in neither the loaded words nor builtIn is a programming mistake (the keys test catches it),
+    // but one wrong key must not blank a page, so it warns once per key and returns the key text.
     // w("unit_day", { vars: { n: 3 } }) -> "TRIP DAY 3"; w("unit", { plural: true, lower: true }) -> "trips".
     function w(key, opts) {
       const options = opts || {};
       const entry = entryFor(key);
+      if (entry === null) {
+        if (!warned.has(key)) {
+          warned.add(key);
+          console.warn(`wording.js: no word "${key}"`);
+        }
+        return String(key);
+      }
       let text = entry[options.plural ? 1 : 0];
       if (options.lower) {
         text = lowerWords(text);
