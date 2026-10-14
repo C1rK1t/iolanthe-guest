@@ -2672,7 +2672,12 @@
         ? Number(navigationTrackData.retentionDaysAfterCharter)
         : 3;
       const trackNote = trackPointCount
-        ? `Shared onboard track shows ${trackPointCount} logged point${trackPointCount === 1 ? "" : "s"} for this charter and retains data for the charter plus ${retentionDays} extra day${retentionDays === 1 ? "" : "s"}.`
+        ? w("track_note", {
+          vars: {
+            points: `${trackPointCount} logged point${trackPointCount === 1 ? "" : "s"}`,
+            extra: `${retentionDays} extra day${retentionDays === 1 ? "" : "s"}`
+          }
+        })
         : "Shared onboard track history will appear here as live NMEA positions are recorded.";
       const sourceNote = "Live NMEA position active.";
       setNavigationMapStatus(`${updatedAt}${sourceNote} ${trackNote} Viewed satellite tiles remain available offline after they have been loaded once. ${followNote}`);
@@ -5079,7 +5084,7 @@
       if (summary.completed) {
         meta.textContent = "Itinerary";
         replaceNodeChildren(body, el("div", { class: "idle-summary-list" }, [
-          renderIdleSummaryItem("Charter", "Charter completed", "This charter has been completed.", "idle-itinerary-current")
+          renderIdleSummaryItem(w("unit"), w("unit_completed_title"), w("unit_completed"), "idle-itinerary-current")
         ]));
         return;
       }
@@ -5482,7 +5487,7 @@
       const menuSections = normalizeMenuDaySections(selectedMenu);
       const hasMenuContent = menuSections.some(section => Array.isArray(section.items) && section.items.length);
       const menuDayLabel = Number.isFinite(Number(selectedMenu.charter_day))
-        ? `CHARTER DAY ${Math.round(Number(selectedMenu.charter_day))}`
+        ? w("unit_day", { vars: { n: Math.round(Number(selectedMenu.charter_day)) } })
         : getItineraryTextValue(
           selectedMenu.label,
           formatDisplayDate(selectedMenu.date),
@@ -6325,10 +6330,10 @@
         {
           id: "included-drinks",
           label: "Guest Alcohol",
-          copy: "Alcohol requested for this charter",
+          copy: w("drinks_requested"),
           heading: "Onboard Cellar",
           title: "Guest Alcohol",
-          subtitle: "Alcohol requested for this charter",
+          subtitle: w("drinks_requested"),
           sections: (guestDrinks ? groupedDrinkSections(guestDrinks) : []).concat(
             purchasedAlcoholItems.length
               ? [{ title: "Additional Alcohol Purchased", items: purchasedAlcoholItems, summary_only: true }]

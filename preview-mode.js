@@ -14,7 +14,17 @@
   const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
   const WEEKDAYS = ["SUN", "MON", "TUE", "WED", "THU", "FRI", "SAT"];
   const MONTHS = ["JAN", "FEB", "MAR", "APR", "MAY", "JUN", "JUL", "AUG", "SEP", "OCT", "NOV", "DEC"];
-  const PROBLEMS = { 401: "LOG IN TO THE ADMIN AGAIN", 404: "CHARTER NOT FOUND" };
+  // Spec T: the wording helper (wording.js is loaded before this file in the page; required in node).
+  const wording = typeof module === "object" && module.exports
+    ? require("./wording.js")
+    : (typeof self !== "undefined" ? self.IolantheWording : null);
+
+  // The text of a refused preview (401 session expired, 404 charter deleted); "" for any other status.
+  function problemText(status) {
+    if (status === 401) return "LOG IN TO THE ADMIN AGAIN";
+    if (status === 404) return wording.w("unit_not_found");
+    return "";
+  }
 
   function isRealDate(value) {
     const m = DATE_RE.exec(String(value || ""));
@@ -46,7 +56,8 @@
   // "PREVIEW · TUE 3 NOV", or the problem for a refused preview (401 / 404); "" when not previewing.
   function bannerText(preview, status) {
     if (!preview || !preview.active) return "";
-    if (PROBLEMS[status]) return `PREVIEW · ${PROBLEMS[status]}`;
+    const problem = problemText(status);
+    if (problem) return `PREVIEW · ${problem}`;
     const [y, m, d] = preview.date.split("-").map(Number);
     return `PREVIEW · ${WEEKDAYS[new Date(Date.UTC(y, m - 1, d)).getUTCDay()]} ${d} ${MONTHS[m - 1]}`;
   }

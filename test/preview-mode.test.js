@@ -90,3 +90,17 @@ test("isTabOff: Navigation, Weather, Vessel Info and Safety are greyed out in a 
   assert.deepEqual(["navigation", "weather", "vessel", "safety", "itinerary", "menu", "drinks"].map((t) => pm.isTabOff(on, t)), [true, true, true, true, false, false, false]);
   assert.equal(pm.isTabOff({ active: false, date: "", charterId: "" }, "navigation"), false);
 });
+
+// ---- spec T: the refused-preview text follows the vessel's mode ----
+test("bannerText: the 404 text is the vessel's word (trip), the charter word by default, 401 never changes", () => {
+  const wording = require("../wording.js");
+  const p = { active: true, date: "2026-11-03", charterId: "csaba" };
+  try {
+    wording.setWording({ unit_not_found: ["TRIP NOT FOUND", "TRIP NOT FOUND"] });
+    assert.equal(pm.bannerText(p, 404), "PREVIEW · TRIP NOT FOUND");
+    assert.equal(pm.bannerText(p, 401), "PREVIEW · LOG IN TO THE ADMIN AGAIN");
+  } finally {
+    wording.reset();
+  }
+  assert.equal(pm.bannerText(p, 404), "PREVIEW · CHARTER NOT FOUND");
+});
