@@ -54,6 +54,9 @@
     const AVAILABLE_ALCOHOL_SUBCATEGORY_FALLBACK = "Other";
     // Charter rework spec B: the admin's Guest view loads this page with ?preview=YYYY-MM-DD&charter=<id>. The preview
     // date replaces the browser clock for every charter-date decision; weather and NMEA stay live.
+    // Spec T (Trip mode): visible "charter" words are read through the wording helper (wording.js, loaded before this file).
+    const WORDING_MODULE = window.IolantheWording;
+    const w = WORDING_MODULE.w;
     const PREVIEW_MODULE = window.IolantheGuestPreview || null;
     const PREVIEW = PREVIEW_MODULE ? PREVIEW_MODULE.parsePreview(location.search) : { active: false, date: "", charterId: "" };
     const previewApiUrl = url => (PREVIEW_MODULE ? PREVIEW_MODULE.withPreviewParams(url, PREVIEW) : url);
@@ -357,9 +360,19 @@
       banner.classList.toggle("guest-preview-banner--problem", previewProblemStatus !== 0);
     }
 
+    // A refused preview (404, charter deleted) may carry the vessel's `wording` in its JSON body, so the banner uses the
+    // vessel's word; with no body the words already loaded (or the built-in charter words) are kept.
+    async function adoptWordingFromErrorBody(res) {
+      try {
+        const body = await res.json();
+        WORDING_MODULE.setWording(body && body.wording);
+      } catch (_) { /* no JSON body */ }
+    }
+
     async function loadJSON(path) {
       const res = await fetch(path, { cache: "no-store" });
       if (!res.ok) {
+        await adoptWordingFromErrorBody(res);
         const error = new Error(`Failed to load ${path}: ${res.status}`);
         error.status = res.status;
         throw error;
@@ -6780,6 +6793,7 @@
 
     function applySavedCharterBundle(charterBundle) {
       const charterData = charterBundle && typeof charterBundle === "object" ? charterBundle : {};
+      WORDING_MODULE.setWording(charterData.wording);
       const settings = charterData.settings && typeof charterData.settings === "object" ? charterData.settings : DEFAULT_SETTINGS_DATA;
       const itinerary = charterData.itinerary && typeof charterData.itinerary === "object" ? charterData.itinerary : {};
 

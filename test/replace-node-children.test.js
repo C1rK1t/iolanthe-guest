@@ -15,6 +15,7 @@ const vm = require("node:vm");
 
 const ROOT = path.join(__dirname, "..");
 const GUEST_SOURCE = fs.readFileSync(path.join(ROOT, "guest.js"), "utf8");
+const WORDING_SOURCE = fs.readFileSync(path.join(ROOT, "wording.js"), "utf8");
 
 // A stand-in for any DOM object these tests don't check: every property is another stand-in, calling one returns one,
 // writes are ignored.
@@ -100,6 +101,7 @@ function loadGuest() {
   window.window = window;
   window.self = window;
   const context = vm.createContext(window);
+  vm.runInContext(WORDING_SOURCE, context, { filename: "wording.js" });   // index.html loads it before guest.js
   vm.runInContext(GUEST_SOURCE, context, { filename: "guest.js" });
   return { elements, run: code => vm.runInContext(code, context) };
 }
