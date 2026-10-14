@@ -54,6 +54,9 @@
     const AVAILABLE_ALCOHOL_SUBCATEGORY_FALLBACK = "Other";
     // Charter rework spec B: the admin's Guest view loads this page with ?preview=YYYY-MM-DD&charter=<id>. The preview
     // date replaces the browser clock for every charter-date decision; weather and NMEA stay live.
+    // Spec T (Trip mode): visible "charter" words are read through the wording helper (wording.js, loaded before this file).
+    const WORDING_MODULE = window.IolantheWording;
+    const w = WORDING_MODULE.w;
     const PREVIEW_MODULE = window.IolantheGuestPreview || null;
     const PREVIEW = PREVIEW_MODULE ? PREVIEW_MODULE.parsePreview(location.search) : { active: false, date: "", charterId: "" };
     const previewApiUrl = url => (PREVIEW_MODULE ? PREVIEW_MODULE.withPreviewParams(url, PREVIEW) : url);
@@ -357,9 +360,19 @@
       banner.classList.toggle("guest-preview-banner--problem", previewProblemStatus !== 0);
     }
 
+    // A refused preview (404, charter deleted) may carry the vessel's `wording` in its JSON body, so the banner uses the
+    // vessel's word; with no body the words already loaded (or the built-in charter words) are kept.
+    async function adoptWordingFromErrorBody(res) {
+      try {
+        const body = await res.json();
+        WORDING_MODULE.setWording(body && body.wording);
+      } catch (_) { /* no JSON body */ }
+    }
+
     async function loadJSON(path) {
       const res = await fetch(path, { cache: "no-store" });
       if (!res.ok) {
+        await adoptWordingFromErrorBody(res);
         const error = new Error(`Failed to load ${path}: ${res.status}`);
         error.status = res.status;
         throw error;
@@ -2659,7 +2672,12 @@
         ? Number(navigationTrackData.retentionDaysAfterCharter)
         : 3;
       const trackNote = trackPointCount
-        ? `Shared onboard track shows ${trackPointCount} logged point${trackPointCount === 1 ? "" : "s"} for this charter and retains data for the charter plus ${retentionDays} extra day${retentionDays === 1 ? "" : "s"}.`
+        ? w("track_note", {
+          vars: {
+            points: `${trackPointCount} logged point${trackPointCount === 1 ? "" : "s"}`,
+            extra: `${retentionDays} extra day${retentionDays === 1 ? "" : "s"}`
+          }
+        })
         : "Shared onboard track history will appear here as live NMEA positions are recorded.";
       const sourceNote = "Live NMEA position active.";
       setNavigationMapStatus(`${updatedAt}${sourceNote} ${trackNote} Viewed satellite tiles remain available offline after they have been loaded once. ${followNote}`);
@@ -5066,7 +5084,7 @@
       if (summary.completed) {
         meta.textContent = "Itinerary";
         replaceNodeChildren(body, el("div", { class: "idle-summary-list" }, [
-          renderIdleSummaryItem("Charter", "Charter completed", "This charter has been completed.", "idle-itinerary-current")
+          renderIdleSummaryItem(w("unit"), w("unit_completed_title"), w("unit_completed"), "idle-itinerary-current")
         ]));
         return;
       }
@@ -5469,7 +5487,7 @@
       const menuSections = normalizeMenuDaySections(selectedMenu);
       const hasMenuContent = menuSections.some(section => Array.isArray(section.items) && section.items.length);
       const menuDayLabel = Number.isFinite(Number(selectedMenu.charter_day))
-        ? `CHARTER DAY ${Math.round(Number(selectedMenu.charter_day))}`
+        ? w("unit_day", { vars: { n: Math.round(Number(selectedMenu.charter_day)) } })
         : getItineraryTextValue(
           selectedMenu.label,
           formatDisplayDate(selectedMenu.date),
@@ -6312,10 +6330,10 @@
         {
           id: "included-drinks",
           label: "Guest Alcohol",
-          copy: "Alcohol requested for this charter",
+          copy: w("drinks_requested"),
           heading: "Onboard Cellar",
           title: "Guest Alcohol",
-          subtitle: "Alcohol requested for this charter",
+          subtitle: w("drinks_requested"),
           sections: (guestDrinks ? groupedDrinkSections(guestDrinks) : []).concat(
             purchasedAlcoholItems.length
               ? [{ title: "Additional Alcohol Purchased", items: purchasedAlcoholItems, summary_only: true }]
@@ -6780,6 +6798,7 @@
 
     function applySavedCharterBundle(charterBundle) {
       const charterData = charterBundle && typeof charterBundle === "object" ? charterBundle : {};
+      WORDING_MODULE.setWording(charterData.wording);
       const settings = charterData.settings && typeof charterData.settings === "object" ? charterData.settings : DEFAULT_SETTINGS_DATA;
       const itinerary = charterData.itinerary && typeof charterData.itinerary === "object" ? charterData.itinerary : {};
 

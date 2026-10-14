@@ -55,6 +55,23 @@ The guest app has no server of its own — it is served by iolanthe-server.
 - Preserve offline behaviour — all shell assets must be in the cache list.
 - Tablet-first layout, nautical luxury visual language.
 
+## Wording (spec T, Trip mode)
+
+Every visible "charter", "APA", "client", "agent" or "proposal" word is read from the vessel's wording map, never typed
+in code, so a private boat can run in `trip` mode. `wording.js` (UMD: the browser and `node --test` share it) is the
+helper: `w(key, { plural, lower, vars })`. The server sends `wording` (the vessel's mode already resolved) and
+`vessel_mode` in the `/api/charter` payload; `applySavedCharterBundle` hands the words to `setWording`, and a refused
+preview's JSON body may carry them too. A missing map or key uses `BUILT_IN`, the charter copy of every key this site
+uses, so charter mode looks exactly as before and nothing shows a raw key or a blank.
+
+- New visible word: add the key to `BUILT_IN` (the charter text, exactly as it was), call `w("key")`, and give the server
+  plan's table (iolanthe-server `wording.json`) all four strings. `test/wording-keys.test.js` fails on an unknown or
+  unused key.
+- `test/trip-guard.test.js` fails on a visible commercial word typed in any root `.js`/`.html` file (`wording.js`
+  excepted). Its `ALLOW_LIST` is empty and must stay empty.
+- `wording.js` loads before `preview-mode.js` and `guest.js` in `index.html`, with the same `?v=` tag, and `sw.js`
+  precaches it.
+
 ## moon-phase.js
 
 `moon-phase.js` in this repo is a **temporary copy** — remove it after Step 3

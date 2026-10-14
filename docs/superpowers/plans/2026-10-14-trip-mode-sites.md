@@ -151,7 +151,7 @@ The scanner and the helper are deliberately copied, not shared: the sites are se
 
 **Interfaces:**
 - Consumes: nothing.
-- Produces (browser global `window.IolantheWording`, node `require("./wording.js")`): `BUILT_IN` (frozen `{ key: [singular, plural] }`, the charter column of 7 keys), `createWording(builtIn)` returning `{ w, setWording, reset, applyStatic }`, `lowerWords(text)`, and the default instance's `w`, `setWording`, `reset`, `applyStatic`. `w(key, { plural?: boolean, lower?: boolean, vars?: object }) -> string` (throws `Unknown wording key: <key>` only for a key in neither the loaded words nor `BUILT_IN`, a programming error the keys test catches). `setWording(map)` ignores anything that is not a plain object (it keeps the words already loaded). `applyStatic(root)` fills `[data-w]` elements.
+- Produces (browser global `window.IolantheWording`, node `require("./wording.js")`): `BUILT_IN` (frozen `{ key: [singular, plural] }`, the charter column of 7 keys), `createWording(builtIn)` returning `{ w, setWording, reset, applyStatic }`, `lowerWords(text)`, and the default instance's `w`, `setWording`, `reset`, `applyStatic`. `w(key, { plural?: boolean, lower?: boolean, vars?: object }) -> string` (never throws: a key in neither the loaded words nor `BUILT_IN` is a programming error the keys test catches, so `w` warns once per key with `console.warn` and returns the key text). `setWording(map)` ignores anything that is not a plain object (it keeps the words already loaded). `applyStatic(root)` fills `[data-w]` elements.
 
 - [ ] **Step 1: Create the worktree.** From the main checkout, with the plan branch left alone:
 

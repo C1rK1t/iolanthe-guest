@@ -32,6 +32,7 @@ iolanthe-guest/
   sw.js                   Service worker for offline shell caching
   itinerary-days.js       Guest days derived from the v2 itinerary (pure, node --test)
   preview-mode.js         Preview mode params, API URLs, banner text (pure, node --test)
+  wording.js              Spec T wording helper w(key, opts) + built-in charter words (UMD, node --test)
   manifest.json
   manifest.webmanifest
   moon-phase.js           TEMPORARY COPY — remove after Step 3 cutover
@@ -101,8 +102,9 @@ After any change:
 
 ## Tests
 
-Tests: `node --test` runs everything in `test/` (25). `itinerary-days.js` and `preview-mode.js` are UMD modules shared
+Tests: `node --test` runs everything in `test/` (53). `itinerary-days.js` and `preview-mode.js` are UMD modules shared
 by the browser and the tests. `guest.js` is not a module: `test/replace-node-children.test.js` loads it whole in a `vm`
 sandbox with a small fake DOM (the way the admin's `startup-order.test.js` loads `admin.js`) and calls its functions
 there, and `test/obs-feed-removed.test.js` reads the shipped files (no OBS feed code, the `?v=` tags in `index.html` and
-`sw.js` match, every precached file exists).
+`sw.js` match, every precached file exists). `test/trip-guard.test.js` scans the root `.js`/`.html` files for visible
+commercial words (scanner: `test/visible-words.js`); `test/wording*.test.js` cover the helper, its keys and its wiring.
