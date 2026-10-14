@@ -1,7 +1,7 @@
 "use strict";
 
 // Every wording key used in the site's code must exist in the built-in charter copy, and every built-in key must be used
-// (no dead keys, no typos that would throw "Unknown wording key" on a tablet).
+// (no dead keys, no typos that would show a raw key on a tablet).
 
 const test = require("node:test");
 const assert = require("node:assert/strict");
